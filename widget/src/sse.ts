@@ -19,8 +19,6 @@ export interface StreamHandlers {
   onPreStreamError: (status: number, error: PreStreamError) => void;
 }
 
-const decoder = new TextDecoder();
-
 // Parse one SSE frame block ("event: X\ndata: {...}") into a protocol event.
 function parseFrame(block: string): ServerEvent | null {
   let dataLine = "";
@@ -97,6 +95,9 @@ export async function streamChat(
   }
 
   const reader = resp.body.getReader();
+  // A fresh decoder per stream: a shared/module-level one carries partial-multibyte
+  // state (stream:true) that would corrupt a concurrent stream's UTF-8 boundaries.
+  const decoder = new TextDecoder();
   let buffer = "";
   let sawDone = false;
 

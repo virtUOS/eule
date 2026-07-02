@@ -111,6 +111,12 @@ async def run_turn(
         session.pending_reply_to = None
         session.pending_interrupt = None
     else:
+        # A fresh message abandons any prior interrupt: clear the pending state so a
+        # stale/replayed reply_to can no longer resume it (docs/01 §Reconnection —
+        # "fails safe, no double execution"). Without this, a desynced client (e.g.
+        # after a reload) could later resume an interrupt the user already walked away from.
+        session.pending_reply_to = None
+        session.pending_interrupt = None
         graph_input = _initial_state(req)
 
     ctx = build_runtime_context(

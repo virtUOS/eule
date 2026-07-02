@@ -59,7 +59,15 @@ def _merge_scheme(base: dict[str, str], override: dict[str, str]) -> dict[str, s
     merged = dict(base)
     merged.update(override)
     if merged.get("--on-primary") == "auto":
-        merged["--on-primary"] = _auto_on_primary(merged["--primary"])
+        # Resolve "auto" only when --primary is a usable colour; otherwise leave the
+        # literal "auto" so the contrast check reports a clean check-9 error rather
+        # than raising here (missing/invalid --primary is caught by _scheme_violations).
+        primary = merged.get("--primary")
+        if primary is not None:
+            try:
+                merged["--on-primary"] = _auto_on_primary(primary)
+            except ValueError:
+                pass
     return merged
 
 
@@ -89,7 +97,16 @@ def _scheme_violations(scheme: str, t: dict[str, str]) -> list[str]:
         if fg is None or bg is None:
             out.append(f"[{scheme}] missing token for contrast pair {fg_key} on {bg_key}")
             return
-        ratio = contrast_ratio(fg, bg)
+        try:
+            ratio = contrast_ratio(fg, bg)
+        except ValueError:
+            # Non-hex token value (e.g. a named colour or rgb()) — report cleanly
+            # instead of letting the ValueError abort validate-config with a traceback.
+            out.append(
+                f"[{scheme}] {fg_key} or {bg_key} is not a hex colour "
+                f"({fg_key}={fg!r}, {bg_key}={bg!r}); theme tokens must be #rgb/#rrggbb"
+            )
+            return
         if ratio + 1e-9 < minimum:
             out.append(
                 f"[{scheme}] {fg_key} on {bg_key} = {ratio:.2f}:1 (< {minimum}:1) — {why}"

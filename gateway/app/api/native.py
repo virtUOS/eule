@@ -68,7 +68,14 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
             400, "invalid_request", "Provide exactly one of: message, choice, greeting."
         )
 
-    if body.message is not None and len(body.message) > cfg.max_message_chars:
+    # Enforce the per-bot limit on any free text the user can type — a plain message
+    # OR a free-text reply to a quick-reply interrupt (choice.text).
+    choice_text = body.choice.get("text") if body.choice else None
+    longest = max(
+        (len(t) for t in (body.message, choice_text) if isinstance(t, str)),
+        default=0,
+    )
+    if longest > cfg.max_message_chars:
         return _error_response(
             400, "message_too_long",
             f"Message exceeds the {cfg.max_message_chars}-character limit.",

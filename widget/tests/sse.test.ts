@@ -20,6 +20,17 @@ function streamResponse(chunks: string[], status = 200): Response {
   } as unknown as Response;
 }
 
+function byteStreamResponse(chunks: Uint8Array[]): Response {
+  let i = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(c) {
+      if (i < chunks.length) c.enqueue(chunks[i++]);
+      else c.close();
+    },
+  });
+  return { ok: true, status: 200, body } as unknown as Response;
+}
+
 function collect() {
   const events: ServerEvent[] = [];
   let dropped = false;
@@ -101,6 +112,23 @@ describe("streamChat", () => {
     await streamChat("/chat", { message: "x", choice: { id: "y" } }, {}, c.handlers);
     expect(c.preErr).toEqual({ status: 400, code: "invalid_request" });
     expect(c.events).toHaveLength(0);
+  });
+
+  it("decodes a multibyte char split across read chunks (F6: per-call decoder)", async () => {
+    const c = collect();
+    const enc = new TextEncoder();
+    const full =
+      'event: text\ndata: {"type":"text","seq":0,"message_id":"m1","delta":"café"}\n\n' +
+      'event: done\ndata: {"type":"done","seq":1,"status":"complete","session_id":"s"}\n\n';
+    const bytes = enc.encode(full);
+    const cut = bytes.indexOf(0xc3) + 1; // split INSIDE the é (0xC3 0xA9) sequence
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => byteStreamResponse([bytes.slice(0, cut), bytes.slice(cut)])),
+    );
+    await streamChat("/chat", { message: "x" }, {}, c.handlers);
+    const text = c.events[0] as Extract<ServerEvent, { type: "text" }>;
+    expect(text.delta).toBe("café"); // no mojibake / replacement char
   });
 
   it("flags a transport drop when the stream ends without done", async () => {

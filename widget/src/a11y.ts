@@ -54,11 +54,15 @@ export class Announcer {
     this.resetDebounce();
   }
 
-  // On `done`: cancel pending buffer flush and announce the full message once.
-  finalize(fullMessage: string): void {
+  // On `done`: cancel pending debounce and announce only the still-unflushed tail, so
+  // the full message is heard exactly once, in order (deltas already flushed the
+  // completed sentences). Re-announcing the whole message here would double-read it.
+  finalize(): void {
     this.cancelDebounce();
-    this.buffer = "";
-    this.flush(fullMessage);
+    if (this.buffer) {
+      this.flush(this.buffer);
+      this.buffer = "";
+    }
   }
 
   // A labelled list announced AFTER the message body (docs/05 §3 Sources).

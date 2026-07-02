@@ -70,6 +70,18 @@ export async function stubBackend(page: Page): Promise<void> {
         { type: "text", seq: 2, message_id: "m1", delta: "Here is the answer." },
         done("complete", 3),
       ];
+    } else if (msg.includes("two")) {
+      // a turn with TWO assistant messages (distinct message_ids); sources on the first
+      events = [
+        session,
+        { type: "text", seq: 1, message_id: "m1", delta: "First answer." },
+        {
+          type: "sources", seq: 2, message_id: "m1",
+          sources: [{ title: "Source One", source: "one.uni.edu", url: "https://one.uni.edu" }],
+        },
+        { type: "text", seq: 3, message_id: "m2", delta: "Second answer." },
+        done("complete", 4),
+      ];
     } else if (msg.includes("menu")) {
       events = [
         session,

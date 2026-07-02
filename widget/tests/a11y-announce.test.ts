@@ -46,13 +46,22 @@ describe("Announcer", () => {
     expect(message.textContent).toContain("VPN is set up.");
   });
 
-  it("announces the full message once on finalize and cancels the debounce", () => {
-    a.delta("Partial without end ");
-    a.finalize("Partial without end and the rest.");
-    expect(message.textContent).toContain("and the rest.");
-    const childrenAfterFinalize = message.childElementCount;
-    vi.advanceTimersByTime(2000); // debounce must NOT fire again
-    expect(message.childElementCount).toBe(childrenAfterFinalize);
+  it("on finalize announces only the unflushed tail — never re-reads the whole message", () => {
+    a.delta("VPN is set up. "); // sentence boundary → flushed now (child 1)
+    a.delta("Then reconnect"); // no boundary → buffered
+    a.finalize(); // flush the tail only (child 2)
+    const chunks = Array.from(message.children).map((c) => c.textContent);
+    expect(chunks).toEqual(["VPN is set up.", "Then reconnect"]);
+    // the full text is present exactly once across the chunks, not duplicated
+    expect(chunks.join(" ")).toBe("VPN is set up. Then reconnect");
+  });
+
+  it("finalize cancels the pending debounce (no late duplicate flush)", () => {
+    a.delta("no boundary here");
+    a.finalize(); // flushes the tail (child 1) and clears the timer
+    const count = message.childElementCount;
+    vi.advanceTimersByTime(2000);
+    expect(message.childElementCount).toBe(count);
   });
 
   it("routes status to the status region (atomic), never the message region", () => {

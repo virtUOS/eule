@@ -43,7 +43,9 @@ export class WolkeWidget {
 
   private sessionId: string | null = null;
   private pending: PendingInterrupt | null = null;
-  private currentBot: BotMessage | null = null;
+  // One assistant bubble per message_id within a turn (a turn may emit several).
+  private bots = new Map<string, BotMessage>();
+  private pendingSources: string | null = null; // announced AFTER the body, on done
   private typingEl: HTMLElement | null = null;
   private lastRequest: ChatRequest | null = null;
   private releaseTrap: (() => void) | null = null;
@@ -165,7 +167,8 @@ export class WolkeWidget {
   private resetConversation(): void {
     this.sessionId = null;
     this.pending = null;
-    this.currentBot = null;
+    this.bots.clear();
+    this.pendingSources = null;
     this.started = false;
     this.dom.log.replaceChildren();
     this.clearTyping();
@@ -216,7 +219,11 @@ export class WolkeWidget {
   private async runTurn(partial: ChatRequest): Promise<void> {
     this.started = true;
     this.hideError();
-    this.currentBot = null;
+    this.bots.clear();
+    this.pendingSources = null;
+    // A resume turn consumes its interrupt server-side; if the stream drops it CANNOT
+    // be safely retried (the reply_to no longer matches) — so it is not recoverable.
+    const isResume = partial.choice !== undefined || partial.reply_to !== undefined;
     const body: ChatRequest = {
       ...partial,
       client: { locale: this.opts.lang, widget_version: WIDGET_VERSION, embed_origin: location.origin },
@@ -234,7 +241,7 @@ export class WolkeWidget {
       onEvent: (ev) => this.handleEvent(ev),
       onTransportDrop: () => {
         this.clearTyping();
-        this.showError(this.s.connectionLost, true);
+        this.showError(this.s.connectionLost, !isResume);
         this.disableSendWhileStreaming(false);
       },
       onPreStreamError: (_status, err) => {
@@ -257,15 +264,14 @@ export class WolkeWidget {
         break;
       case "text":
         this.clearTyping();
-        this.ensureBotMessage();
-        this.currentBot?.appendText(ev.delta);
+        this.ensureBotMessage(ev.message_id).appendText(ev.delta);
         this.announcer.delta(ev.delta);
         this.autoscroll();
         break;
       case "sources":
-        this.ensureBotMessage();
-        this.currentBot?.attachSources(ev.sources, this.s);
-        this.announceSources(ev.sources);
+        // Render the footer now, but announce it AFTER the body (on done), per docs/05 §3.
+        this.ensureBotMessage(ev.message_id).attachSources(ev.sources, this.s);
+        this.pendingSources = this.sourcesAnnouncement(ev.sources);
         this.autoscroll();
         break;
       case "quick_replies":
@@ -286,8 +292,13 @@ export class WolkeWidget {
 
   private onDone(status: "complete" | "awaiting_input" | "error"): void {
     this.dom.statusLine.hidden = true;
-    // announce the full assistant message once (authoritative), if any
-    if (this.currentBot) this.announcer.finalize(this.currentBot.fullText());
+    // flush the unannounced tail of the body first, THEN the sources — so a screen
+    // reader hears the answer before its citations (docs/05 §3).
+    this.announcer.finalize();
+    if (this.pendingSources) {
+      this.announcer.announceSources(this.pendingSources);
+      this.pendingSources = null;
+    }
     if (status === "awaiting_input") {
       // interrupt UI + its announcement were set by quick_replies; keep them and the
       // composer state (per allow_free_text). Do NOT clear the status announcer here.
@@ -307,10 +318,16 @@ export class WolkeWidget {
     this.autoscroll();
   }
 
-  private ensureBotMessage(): void {
-    if (this.currentBot) return;
-    this.currentBot = botMessage(this.s, this.config.name);
-    this.dom.log.appendChild(this.currentBot.el);
+  // Get-or-create the bubble for a message_id, so a turn with several assistant
+  // messages renders as several bubbles and sources bind to the right one (docs/01).
+  private ensureBotMessage(messageId: string): BotMessage {
+    let bot = this.bots.get(messageId);
+    if (!bot) {
+      bot = botMessage(this.s, this.config.name);
+      this.bots.set(messageId, bot);
+      this.dom.log.appendChild(bot.el);
+    }
+    return bot;
   }
 
   private showTyping(): void {
@@ -430,11 +447,11 @@ export class WolkeWidget {
     if (!this.dom.input.disabled) this.dom.input.focus();
   }
 
-  // --- sources announcement (after body, docs/05 §3) ---
-  private announceSources(sources: SourceItem[]): void {
-    if (sources.length === 0) return;
+  // --- sources announcement text (spoken after the body, on done — docs/05 §3) ---
+  private sourcesAnnouncement(sources: SourceItem[]): string | null {
+    if (sources.length === 0) return null;
     const titles = sources.map((s) => s.title).join("; ");
-    this.announcer.announceSources(this.s.sourcesAnnounce(sources.length, titles));
+    return this.s.sourcesAnnounce(sources.length, titles);
   }
 
   // --- errors + retry ---
