@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>wolke widget — dev host</title>
+    <style>
+      html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .host-top { height: 60px; border-bottom: 1px solid #e2e2e5; display: flex; align-items: center; gap: 12px; padding: 0 28px; background: #f4f4f5; }
+      .host-logo { width: 26px; height: 26px; border-radius: 6px; background: #a6093d; }
+      .host-nav { margin-left: auto; display: flex; gap: 22px; color: #6b6b70; font-size: 14px; }
+      main { max-width: 860px; margin: 0 auto; padding: 44px 28px; }
+      #inline-mount { height: 520px; border: 1px dashed #ccc; }
+    </style>
+  </head>
+  <body>
+    <div class="host-top">
+      <div class="host-logo"></div>
+      <strong>Universität Osnabrück</strong>
+      <nav class="host-nav"><span>Studium</span><span>Forschung</span><span>Service</span></nav>
+    </div>
+    <main>
+      <h1>Beispiel-Hostseite</h1>
+      <p>Diese Seite bettet das wolke-Widget ein. Modus über <code>?mode=launcher|inline|standalone</code>.</p>
+      <div id="inline-mount"></div>
+    </main>
+    <script type="module">
+      import { mount } from "/src/index.ts";
+      const p = new URLSearchParams(location.search);
+      const mode = p.get("mode") || "launcher";
+      const opts = { botId: p.get("botId") || "echo", mode, baseUrl: p.get("baseUrl") || "" };
+      if (p.get("lang")) opts.lang = p.get("lang");
+      if (p.get("theme") === "light" || p.get("theme") === "dark") opts.scheme = p.get("theme");
+      if (mode !== "launcher") opts.mount = document.getElementById("inline-mount");
+      mount(opts)
+        .then((w) => {
+          window.__widget = w;
+          document.body.dataset.ready = "1";
+        })
+        .catch((e) => {
+          console.error(e);
+          document.body.dataset.error = String(e);
+        });
+    </script>
+  </body>
+</html>
