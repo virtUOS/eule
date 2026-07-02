@@ -1,0 +1,66 @@
+version: 1
+
+model_providers:
+  default:
+    base_url: "http://vllm:8000/v1"
+    api_key_env: "VLLM_API_KEY"          # secret by ENV NAME (never a value)
+    default_model: "llama-3.3-70b-instruct"
+    timeout_s: 60
+    max_retries: 2
+  fast-small:
+    base_url: "http://vllm-small:8000/v1"
+    api_key_env: "VLLM_SMALL_API_KEY"
+    default_model: "llama-3.1-8b-instruct"
+    timeout_s: 30
+
+mcp_servers: {}
+
+# auth block is optional until the first requires_auth bot (Step 3).
+
+defaults:
+  session_ttl_s: 1800
+  max_message_chars: 4000
+  history_max_turns: 20
+  rate_limit:
+    anonymous:     { requests_per_min: 15, requests_per_day: 300 }
+    authenticated: { requests_per_min: 60 }
+  guard: { enabled: false }
+  greeting: { mode: "client_initiated" }
+
+# Global-only (NOT per-bot overridable).
+streaming: { heartbeat_s: 15 }
+
+# Deployment default theme = wolke design system. External clients override same keys.
+theme:
+  dark_mode: "auto"              # auto (prefers-color-scheme) | light | dark
+  light:
+    "--bg": "#ffffff"
+    "--surface": "#f4f4f5"
+    "--surface-2": "#ececee"
+    "--border": "#e2e2e5"
+    "--text": "#18181b"
+    "--text-muted": "#6b6b70"
+    "--primary": "#a6093d"
+    "--primary-hover": "#8a0732"
+    "--accent": "#f2c879"        # decorative eyebrow glyph only (exempt from contrast)
+    "--on-primary": "#ffffff"
+  dark:
+    "--bg": "#161618"
+    "--surface": "#1e1e21"
+    "--surface-2": "#27272b"
+    "--border": "#34343a"
+    "--text": "#f4f4f5"
+    "--text-muted": "#9a9aa1"
+    # wolke's #c2355c is only 3.41:1 on the dark --bg (fails the check-9 4.5:1 link/chip
+    # contract). Lightened to #d95c7d (4.97:1) — contract wins over the mockup token
+    # (CLAUDE.md design rules). Confirm with the wolke designer.
+    "--primary": "#d95c7d"
+    "--primary-hover": "#c2355c"
+    "--accent": "#f2c879"
+    "--on-primary": "#ffffff"
+  radius:
+    "--radius-panel": "22px"
+    "--radius-card": "12px"
+    "--radius-bubble": "14px"
+    "--radius-input": "12px"
+    "--radius-send": "14px"

@@ -1,0 +1,31 @@
+version: 1
+id: "echo"
+name: "Echo Bot"
+description: "Skeleton stub bot: streams your message back. Used to prove the gateway."
+enabled: true
+
+model:
+  provider: "default"
+
+prompt:
+  system: "You are a diagnostic echo bot."
+
+requires_auth: false
+
+tools:
+  mcp_servers: []
+
+guard: { enabled: false }
+greeting: { mode: "client_initiated" }
+
+embedding:
+  mode: "launcher"              # launcher | inline | standalone
+  allowed_origins: ["https://www.uni-osnabrueck.de"]
+
+starter_replies:
+  de:
+    - { label: "Hallo sagen", query: "Hallo!" }
+    - { label: "Was kannst du?", query: "Was kannst du?" }
+  en:
+    - { label: "Say hello", query: "Hello!" }
+    - { label: "What can you do?", query: "What can you do?" }
