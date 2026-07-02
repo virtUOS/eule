@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="stylesheet" href="../_ds/wolke-design-system-29b8b69c-612b-46df-9566-9327316ee3ec/_ds_bundle.css">
+<link rel="stylesheet" href="../_ds/wolke-design-system-29b8b69c-612b-46df-9566-9327316ee3ec/styles.css">
+<style>
+  html,body{margin:0;height:100%}
+  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);color:var(--text)}
+  @keyframes wk-dot{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-4px);opacity:1}}
+  @keyframes wk-pop{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+  .wk-scroll{scrollbar-width:thin}
+  .wk-scroll::-webkit-scrollbar{width:6px}
+  .wk-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+  #wolke-widget input::placeholder{color:var(--text-muted)}
+</style>
+<template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#a6093d"/><path d="M34 66a13 13 0 0 1-1.5-25.9A17 17 0 0 1 66 35.5 12 12 0 0 1 64 66H34z" fill="#fff"/></svg></template>
+</helmet>
+
+<div id="wolke-widget" class="{{ themeClass }}">
+
+  <sc-if value="{{ showHostMock }}"><div style="position:fixed;inset:0;overflow:hidden;background:var(--bg)">
+    <div style="height:60px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;padding:0 28px;background:var(--surface)">
+      <div style="width:26px;height:26px;border-radius:6px;background:var(--primary)"></div>
+      <div style="font-weight:700;letter-spacing:-.01em;color:var(--text)">Universität Osnabrück</div>
+      <div style="margin-left:auto;display:flex;gap:22px;color:var(--text-muted);font-size:14px"><span>Studium</span><span>Forschung</span><span>Service</span></div>
+    </div>
+    <div style="max-width:860px;margin:0 auto;padding:44px 28px;opacity:.85">
+      <div style="height:16px;width:44%;background:var(--surface-2);border-radius:8px;margin-bottom:22px"></div>
+      <div style="height:180px;background:var(--surface-2);border-radius:14px;margin-bottom:26px"></div>
+      <div style="height:13px;width:92%;background:var(--surface-2);border-radius:7px;margin-bottom:12px"></div>
+      <div style="height:13px;width:86%;background:var(--surface-2);border-radius:7px;margin-bottom:12px"></div>
+      <div style="height:13px;width:70%;background:var(--surface-2);border-radius:7px"></div>
+    </div>
+  </div></sc-if>
+
+  <sc-if value="{{ W.open }}">
+  <div role="dialog" aria-label="wolke" style="position:fixed;right:20px;bottom:92px;width:376px;max-width:calc(100vw - 32px);height:min(560px, calc(100vh - 120px));background:var(--bg);border:1px solid var(--border);border-radius:22px;box-shadow:0 18px 50px rgba(0,0,0,.18);display:flex;flex-direction:column;overflow:hidden;animation:wk-pop .3s ease;z-index:2147483000">
+    <div style="display:flex;align-items:center;gap:10px;padding:15px 14px 14px 16px;border-bottom:1px solid var(--border)">
+      <div style="flex:none;width:30px;height:30px;border-radius:50%;background:var(--surface-2);color:var(--primary);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6.5 19a4.5 4.5 0 0 1-.5-8.97A6 6 0 0 1 17.7 8.5 4 4 0 0 1 17.5 19h-11z"/></svg></div>
+      <div style="flex:1"><div style="font-weight:700;font-size:16px;letter-spacing:-.02em;color:var(--text)">wolke</div></div>
+      <button aria-label="{{ ui.newChat }}" onClick="{{ W.onClear }}" style="flex:none;width:34px;height:34px;border-radius:8px;border:none;background:none;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:var(--surface);color:var(--text)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"/></svg></button>
+      <button aria-label="{{ ui.close }}" onClick="{{ W.closePanel }}" style="flex:none;width:34px;height:34px;border-radius:8px;border:none;background:none;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:var(--surface);color:var(--text)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+
+    <div class="wk-scroll" ref="{{ W.setBody }}" style="flex:1;overflow-y:auto;padding:18px 18px 6px;background:var(--bg)">
+      <sc-for list="{{ W.msgs }}" as="m" hint-placeholder-count="3"><div style="margin-bottom:20px">
+        <sc-if value="{{ m.isUser }}"><div style="display:flex;justify-content:flex-end"><div style="max-width:82%;background:var(--surface-2);color:var(--text);border-radius:14px;padding:9px 13px;font-size:14px;line-height:1.5">{{ m.text }}</div></div></sc-if>
+        <sc-if value="{{ m.isBot }}"><div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span style="color:var(--accent);display:inline-flex"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6.5 19a4.5 4.5 0 0 1-.5-8.97A6 6 0 0 1 17.7 8.5 4 4 0 0 1 17.5 19h-11z"/></svg></span><span style="font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted)">wolke</span></div>
+          <div style="font-size:14.5px;line-height:1.62;color:var(--text)">{{ m.text }}</div>
+          <sc-if value="{{ m.hasCites }}"><div style="display:flex;flex-direction:column;gap:7px;margin-top:11px"><sc-for list="{{ m.cites }}" as="c" hint-placeholder-count="1">
+            <a href="#" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text);border:1px solid var(--border);border-radius:12px;padding:9px 12px;background:var(--surface)" style-hover="border-color:var(--primary)">
+              <span style="flex:none;color:var(--primary);display:inline-flex"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M14 4h6v6M20 4l-9 9"/></svg></span>
+              <span style="flex:1"><span style="display:block;font-size:13px;font-weight:600">{{ c.label }}</span><span style="display:block;font-size:12px;color:var(--text-muted)">{{ c.host }}</span></span>
+              <span style="flex:none;color:var(--text-muted);display:inline-flex"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+            </a>
+          </sc-for></div></sc-if>
+        </div></sc-if>
+      </div></sc-for>
+      <sc-if value="{{ W.typing }}"><div style="display:flex;align-items:center;gap:6px;margin-bottom:20px">
+        <span style="color:var(--accent);display:inline-flex"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6.5 19a4.5 4.5 0 0 1-.5-8.97A6 6 0 0 1 17.7 8.5 4 4 0 0 1 17.5 19h-11z"/></svg></span>
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--text-muted);display:inline-block;animation:wk-dot 1.2s infinite 0s"></span>
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--text-muted);display:inline-block;animation:wk-dot 1.2s infinite .18s"></span>
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--text-muted);display:inline-block;animation:wk-dot 1.2s infinite .36s"></span>
+      </div></sc-if>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:14px;padding:10px 18px;border-top:1px solid var(--border)"><sc-for list="{{ W.quicks }}" as="q" hint-placeholder-count="3">
+      <button onClick="{{ q.onClick }}" style="background:none;border:none;padding:2px 0;font-size:13px;color:var(--primary);cursor:pointer;font-weight:600;font-family:inherit;text-decoration:underline;text-underline-offset:3px" style-hover="color:var(--primary-hover)">{{ q.label }}</button>
+    </sc-for></div>
+
+    <div style="display:flex;gap:10px;align-items:center;padding:12px 16px;border-top:1px solid var(--border)">
+      <input value="{{ W.draft }}" onChange="{{ W.onInput }}" onKeyDown="{{ W.onKey }}" placeholder="{{ ui.placeholder }}" aria-label="{{ ui.placeholder }}" style="flex:1;border:none;border-radius:12px;padding:11px 14px;font-size:14px;background:var(--surface);color:var(--text);outline:none;font-family:inherit">
+      <button onClick="{{ W.onSend }}" aria-label="{{ ui.send }}" style="width:42px;height:42px;padding:0;border:none;border-radius:14px;background:var(--primary);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none" style-hover="background:var(--primary-hover)"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M6 12l6-6 6 6"/></svg></button>
+    </div>
+  </div>
+  </sc-if>
+
+  <button onClick="{{ W.toggle }}" aria-label="{{ ui.ask }}" aria-expanded="{{ W.open }}" style="position:fixed;right:20px;bottom:20px;width:58px;height:58px;border-radius:50%;border:none;background:var(--primary);color:#fff;box-shadow:0 10px 26px rgba(166,9,61,.42);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2147483000" style-hover="background:var(--primary-hover)">
+    <sc-if value="{{ W.open }}"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></sc-if>
+    <sc-if value="{{ W.closed }}"><svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M6.5 19a4.5 4.5 0 0 1-.5-8.97A6 6 0 0 1 17.7 8.5 4 4 0 0 1 17.5 19h-11z"/></svg></sc-if>
+  </button>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;defaultLang&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;de&quot;,&quot;en&quot;],&quot;default&quot;:&quot;de&quot;,&quot;tsType&quot;:&quot;'de'|'en'&quot;},&quot;defaultTheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light'|'dark'&quot;},&quot;startOpen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;showHostMock&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.KEY = 'wolke-widget';
+    this.body = null;
+    this.state = {
+      lang: props.defaultLang === 'en' ? 'en' : 'de',
+      theme: props.defaultTheme === 'dark' ? 'dark' : 'light',
+      open: props.startOpen !== false,
+      chat: [],
+      typing: false,
+      draft: '',
+    };
+  }
+
+  componentDidMount() {
+    try {
+      const raw = localStorage.getItem(this.KEY);
+      if (raw) {
+        const d = JSON.parse(raw);
+        if (d && d.chat) { this.setState({ chat: d.chat, lang: d.lang || this.state.lang }); return; }
+      }
+    } catch (e) {}
+    this.setState({ chat: this.freshChat() });
+  }
+
+  componentDidUpdate() { if (this.body) this.body.scrollTop = this.body.scrollHeight; }
+
+  persist() {
+    try { localStorage.setItem(this.KEY, JSON.stringify({ chat: this.state.chat, lang: this.state.lang })); } catch (e) {}
+  }
+
+  now() { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+
+  greeting() {
+    return this.state.lang === 'de'
+      ? 'Hallo! Ich bin wolke, dein digitaler Assistent der Universität Osnabrück. Wie kann ich dir heute helfen?'
+      : 'Hi! I am wolke, the digital assistant of Osnabrück University. How can I help you today?';
+  }
+
+  topics() {
+    return [
+      { k: ['vpn'],
+        de: 'Für den VPN-Zugang installierst du den „Cisco Secure Client“, startest ihn und meldest dich mit deiner Uni-Kennung an. Danach erreichst du interne Dienste wie Netzlaufwerke und Datenbanken von überall.',
+        en: 'For VPN access, install the “Cisco Secure Client”, launch it and sign in with your university login. You can then reach internal services like network drives and databases from anywhere.',
+        cites: [{ label: 'VPN – Rechenzentrum', host: 'rz.uni-osnabrueck.de' }, { label: 'Cisco Secure Client', host: 'vpn.uni-osnabrueck.de' }] },
+      { k: ['eduroam', 'wlan', 'wifi', 'wi-fi', 'w-lan'],
+        de: 'Verbinde dich mit dem WLAN „eduroam“ und melde dich mit deiner vollständigen Uni-Kennung (kennung@uni-osnabrueck.de) und deinem Passwort an. Am einfachsten geht die Einrichtung über das „geteduroam“-Tool.',
+        en: 'Connect to the “eduroam” Wi-Fi and sign in with your full university login (login@uni-osnabrueck.de) and password. The easiest setup is via the “geteduroam” tool.',
+        cites: [{ label: 'eduroam / WLAN', host: 'rz.uni-osnabrueck.de' }] },
+      { k: ['passwort', 'password', 'kennung', 'login', 'anmeld'],
+        de: 'Dein Passwort änderst du im Benutzerportal unter „Kennung & Passwort“. Hast du es vergessen, setzt das Servicedesk des Rechenzentrums es nach einer Identitätsprüfung zurück.',
+        en: 'Change your password in the user portal under “Login & Password”. If you have forgotten it, the RZ service desk resets it after verifying your identity.',
+        cites: [{ label: 'Benutzerportal', host: 'idm.uni-osnabrueck.de' }, { label: 'Servicedesk', host: 'rz.uni-osnabrueck.de' }] },
+      { k: ['mail', 'email', 'e-mail', 'outlook', 'thunderbird', 'postfach'],
+        de: 'Deine Uni-E-Mails rufst du über das Webmail-Portal oder per IMAP in Outlook bzw. Thunderbird ab. Zugangsdaten sind deine Uni-Kennung und dein Passwort.',
+        en: 'Access your university email via the webmail portal or via IMAP in Outlook or Thunderbird. Use your university login and password.',
+        cites: [{ label: 'Webmail', host: 'mail.uni-osnabrueck.de' }] },
+      { k: ['biblio', 'library', 'buch', 'book', 'ausleih', 'loan', 'öffnung', 'oeffnung'],
+        de: 'Die Universitätsbibliothek ist Mo–Fr von 8 bis 24 Uhr und am Wochenende von 10 bis 22 Uhr geöffnet. Ausleihen verlängerst du online in deinem Bibliothekskonto.',
+        en: 'The university library is open Mon–Fri 8 am to midnight and weekends 10 am to 10 pm. Renew loans online in your library account.',
+        cites: [{ label: 'Bibliothek – Öffnungszeiten', host: 'ub.uni-osnabrueck.de' }] },
+      { k: ['immatrik', 'enrol', 'einschreib', 'bewerb', 'apply', 'rückmeld', 'ruckmeld', 'semesterbeitrag'],
+        de: 'Zur Rückmeldung überweist du den Semesterbeitrag fristgerecht; die Immatrikulationsbescheinigung lädst du danach im Stud.IP-Portal herunter.',
+        en: 'To re-register, pay the semester fee on time; you can then download your enrolment certificate from the Stud.IP portal.',
+        cites: [{ label: 'Studierendensekretariat', host: 'uni-osnabrueck.de' }] },
+      { k: ['prüf', 'pruef', 'exam', 'klausur', 'note', 'grade', 'stud.ip', 'studip'],
+        de: 'Zu Prüfungen meldest du dich innerhalb der Anmeldefrist in Stud.IP an. Deine Noten erscheinen dort, sobald sie verbucht sind.',
+        en: 'Register for exams within the registration period in Stud.IP. Your grades appear there once they have been recorded.',
+        cites: [{ label: 'Stud.IP', host: 'studip.uni-osnabrueck.de' }] },
+    ];
+  }
+
+  reply(text) {
+    const lang = this.state.lang;
+    const low = (text || '').toLowerCase();
+    const t = this.topics().find(x => x.k.some(k => low.includes(k)));
+    if (!t) return {
+      text: lang === 'de'
+        ? 'Das schaue ich gern für dich nach. Sag mir kurz, worum es geht — z. B. VPN, eduroam, E-Mail, Bibliothek, Immatrikulation oder Prüfungen.'
+        : 'Happy to look into that. Tell me briefly what it is about — e.g. VPN, eduroam, email, library, enrolment or exams.',
+      cites: [],
+    };
+    return { text: t[lang], cites: (t.cites || []).slice() };
+  }
+
+  starterQuick() {
+    return this.state.lang === 'de'
+      ? [{ label: 'VPN einrichten', q: 'Wie richte ich den VPN ein?' }, { label: 'eduroam / WLAN', q: 'Wie verbinde ich mich mit eduroam?' }, { label: 'Passwort ändern', q: 'Wie ändere ich mein Passwort?' }, { label: 'Bibliothek', q: 'Wann hat die Bibliothek geöffnet?' }]
+      : [{ label: 'Set up VPN', q: 'How do I set up the VPN?' }, { label: 'eduroam / Wi-Fi', q: 'How do I connect to eduroam wifi?' }, { label: 'Change password', q: 'How do I change my password?' }, { label: 'Library', q: 'What are the library opening hours?' }];
+  }
+
+  freshChat() {
+    const g = { id: 'g' + Math.random(), role: 'bot', text: this.greeting(), cites: [], time: this.now() };
+    const u = { id: 'u' + Math.random(), role: 'user', text: this.state.lang === 'de' ? 'Wie richte ich den VPN ein?' : 'How do I set up the VPN?', time: this.now() };
+    const r = this.reply('vpn');
+    const b = { id: 'b' + Math.random(), role: 'bot', text: r.text, cites: r.cites, time: this.now() };
+    return [g, u, b];
+  }
+
+  send(raw) {
+    const text = (raw || '').trim();
+    if (!text) return;
+    const withUser = this.state.chat.concat([{ id: 'u' + Date.now(), role: 'user', text, time: this.now() }]);
+    this.setState({ chat: withUser, draft: '', typing: true }, () => this.persist());
+    setTimeout(() => {
+      const r = this.reply(text);
+      const withBot = this.state.chat.concat([{ id: 'b' + Date.now(), role: 'bot', text: r.text, cites: r.cites, time: this.now() }]);
+      this.setState({ chat: withBot, typing: false }, () => this.persist());
+    }, 850);
+  }
+
+  renderVals() {
+    const s = this.state;
+    const de = s.lang === 'de';
+    const msgs = s.chat.map(m => ({
+      ...m, isUser: m.role === 'user', isBot: m.role === 'bot',
+      hasCites: !!(m.cites && m.cites.length),
+      cites: (m.cites || []).map((c, i) => ({ ...c, idx: i + 1 })),
+    }));
+    return {
+      ui: {
+        placeholder: de ? 'Nachricht an wolke…' : 'Message wolke…',
+        newChat: de ? 'Neues Gespräch' : 'New chat',
+        close: de ? 'Schließen' : 'Close',
+        send: de ? 'Senden' : 'Send',
+        ask: de ? 'Fragen? wolke hilft' : 'Ask wolke',
+      },
+      themeClass: s.theme === 'dark' ? 'dark' : '',
+      showHostMock: this.props.showHostMock !== false,
+      W: {
+        msgs,
+        typing: s.typing,
+        draft: s.draft,
+        open: s.open,
+        closed: !s.open,
+        quicks: this.starterQuick().map(q => ({ label: q.label, onClick: () => this.send(q.q) })),
+        onInput: (e) => this.setState({ draft: e.target.value }),
+        onKey: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.send(this.state.draft); } },
+        onSend: () => this.send(this.state.draft),
+        onClear: () => this.setState({ chat: this.freshChat(), draft: '', typing: false }, () => this.persist()),
+        toggle: () => this.setState({ open: !this.state.open }),
+        openPanel: () => this.setState({ open: true }),
+        closePanel: () => this.setState({ open: false }),
+        setBody: (el) => { this.body = el; },
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+# Python (gateway)
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node (widget)
+node_modules/
+dist/
+test-results/
+playwright-report/
+.playwright/
+
+# Env / secrets (config references *_env names; values never committed)
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+*.swp
