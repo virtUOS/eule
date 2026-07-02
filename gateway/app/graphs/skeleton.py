@@ -8,9 +8,11 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Callable, Hashable, TypedDict
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.constants import TAG_NOSTREAM
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
@@ -68,13 +70,28 @@ async def _stream_canned(text: str, history: list[BaseMessage]) -> AIMessage:
     return AIMessage(content=full.content or text, id=full.id)
 
 
-def make_guard_node(cfg: Any) -> Callable[..., Any]:
-    """Guard scaffolding (docs/04 §6). Step 1 stub: always in-scope; the real cheap
-    classifier lands in Step 4. Kept so guarded bots compile."""
+def make_guard_node(cfg: Any, model: BaseChatModel) -> Callable[..., Any]:
+    """Cheap-model scope classifier (docs/04 §6). `model` is a NON-answer-facing chat
+    model call — invoked with `tags=[TAG_NOSTREAM]` so its own "in_scope"/"out_of_scope"
+    tokens are excluded from LangGraph's `stream_mode="messages"` and never leak into the
+    client's `text` stream (any model call inside any node is otherwise picked up there,
+    regardless of which node produced it — verified: this is not hypothetical)."""
+
+    scope = f"'{cfg.name}'" + (f": {cfg.description}" if cfg.description else "")
+    system = SystemMessage(
+        f"You are a strict scope classifier for the assistant {scope}. Given the "
+        "user's latest message (and any recent context), reply with EXACTLY one "
+        "word: 'in_scope' if it is something this assistant should help with, or "
+        "'out_of_scope' otherwise. No punctuation, no explanation."
+    )
 
     async def guard(state: BotState, config: RunnableConfig) -> dict[str, Any]:
         emit_status("thinking", "…")
-        return {"scratch": {**state.get("scratch", {}), "guard": "in_scope"}}
+        result = await model.ainvoke(
+            [system, *state["messages"]], config={"tags": [TAG_NOSTREAM]}
+        )
+        verdict = "out_of_scope" if "out_of_scope" in str(result.content).lower() else "in_scope"
+        return {"scratch": {**state.get("scratch", {}), "guard": verdict}}
 
     return guard
 
@@ -94,14 +111,22 @@ def make_decline_node(cfg: Any) -> Callable[..., Any]:
 
 
 def build_bot_graph(
-    cfg: Any, tools: list[Any], fragment: GraphFragment, checkpointer: Any
+    cfg: Any,
+    tools: list[Any],
+    fragment: GraphFragment,
+    checkpointer: Any,
+    guard_model: BaseChatModel | None = None,
 ) -> Any:
     """Build the outer skeleton, attach the fragment, compile with the checkpointer.
-    This is the ONLY place the checkpointer is wired."""
+    This is the ONLY place the checkpointer is wired. `guard_model` is required iff
+    `cfg.guard.enabled` (validation check 6 guarantees a provider is configured; the
+    caller resolves it to a real/fake chat model — see graphs/factory.py)."""
     b = BotGraphBuilder()
     guarded = cfg.guard.enabled
     if guarded:
-        b.add_node("guard", make_guard_node(cfg))
+        if guard_model is None:
+            raise ValueError(f"bot '{cfg.id}' has guard.enabled but no guard_model was built")
+        b.add_node("guard", make_guard_node(cfg, guard_model))
         b.add_node("decline", make_decline_node(cfg))
 
     fragment.flow(b)

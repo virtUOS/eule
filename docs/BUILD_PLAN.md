@@ -25,14 +25,14 @@ widget Vitest + Playwright(axe) + `tsc --strict`. Work is committed on `main`.
   Keycloak are external (URLs in config), not services. See `docs/07-deployment.md`.
 
 ## Step 1 — Gateway skeleton  ✅
-- Config models (Pydantic) + loader + `validate-config` CLI with checks 1–12
+- Config models (Pydantic) + loader + `validate-config` CLI with checks 1–13
   (`docs/03-registry.md`). Fail boot on invalid.
 - Bot registry (in-memory, typed access API).
 - In-memory session store / LangGraph MemorySaver checkpointer, TTL eviction. Wire
   checkpointer ONLY in the graph factory.
 - RuntimeContext builder (auth stub for now).
 - Graph factory + shared skeleton (guard/decline scaffolding).
-- Config models + loader + `validate-config` CLI with checks 1–12
+- Config models + loader + `validate-config` CLI with checks 1–13
   (`docs/03-registry.md`), unified defaults↔override deep-merge, resolved-theme +
   contrast check. Fail boot on invalid.
 - Native `/api/v1/bots/{id}/chat` endpoint: normalize input → run graph → translate

@@ -43,13 +43,14 @@ class Registry:
         except KeyError as e:
             raise UnknownBot(bot_id) from e
 
-    def resolve_provider(
-        self, cfg: BotCfg, env: Mapping[str, str] | None = None
-    ) -> ResolvedProvider:
+    def provider(self, name: str, env: Mapping[str, str] | None = None) -> ResolvedProvider:
+        """Resolve any named `global.model_providers` entry — the bot's own
+        `model.provider` (see `resolve_provider`) or another one, e.g. a guard's
+        cheap-model provider (`cfg.guard.provider`)."""
         env = os.environ if env is None else env
-        prov: ModelProvider = self._gcfg.model_providers[cfg.model.provider]
+        prov: ModelProvider = self._gcfg.model_providers[name]
         return ResolvedProvider(
-            name=cfg.model.provider,
+            name=name,
             base_url=prov.base_url,
             api_key=env.get(prov.api_key_env, ""),
             default_model=prov.default_model,
@@ -57,8 +58,21 @@ class Registry:
             max_retries=prov.max_retries,
         )
 
+    def resolve_provider(
+        self, cfg: BotCfg, env: Mapping[str, str] | None = None
+    ) -> ResolvedProvider:
+        return self.provider(cfg.model.provider, env)
+
     def mcp_for(self, cfg: BotCfg) -> list[McpServer]:
         return [self._gcfg.mcp_servers[name] for name in cfg.tools.mcp_servers]
+
+    def resolve_mcp_bearer(self, srv: McpServer, env: Mapping[str, str] | None = None) -> str | None:
+        """The static bearer token to authenticate the gateway to an MCP server, if
+        configured (`bearer_token_env`). None if the server needs no credential."""
+        if srv.bearer_token_env is None:
+            return None
+        env = os.environ if env is None else env
+        return env.get(srv.bearer_token_env)
 
     def resolve_theme(self, cfg: BotCfg) -> ResolvedTheme:
         return resolve_theme(self._gcfg.theme, cfg.theme)

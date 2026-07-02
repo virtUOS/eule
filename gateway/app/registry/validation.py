@@ -1,4 +1,4 @@
-"""Startup validation — checks 1–12 (docs/03 §Validation). Fail boot on any error.
+"""Startup validation — checks 1–13 (docs/03 §Validation). Fail boot on any error.
 
 Checks 10–12 concern routers (`routes` block); they are no-ops for non-router bots
 and are ready for Step 5b. Check 8 (override shape) is enforced structurally by the
@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from typing import Mapping
 
+from ..graphs.registry import known_graphs
 from .models import BotCfg, GlobalCfg
 from .theme import contrast_violations, resolve_theme
 
@@ -24,11 +25,17 @@ def check_all(
     errors: list[str] = []
     warnings: list[str] = []
 
-    # 3. Every `*_env` reference resolves (global model-provider api keys).
+    # 3. Every `*_env` reference resolves (model-provider api keys + MCP bearer tokens).
     for name, prov in gcfg.model_providers.items():
         if prov.api_key_env not in env:
             errors.append(
                 f"check 3: model_providers.{name}.api_key_env '{prov.api_key_env}' "
+                f"is not set in the environment"
+            )
+    for name, mcp_cfg in gcfg.mcp_servers.items():
+        if mcp_cfg.bearer_token_env is not None and mcp_cfg.bearer_token_env not in env:
+            errors.append(
+                f"check 3: mcp_servers.{name}.bearer_token_env '{mcp_cfg.bearer_token_env}' "
                 f"is not set in the environment"
             )
 
@@ -43,6 +50,13 @@ def check_all(
         for srv in bot.tools.mcp_servers:
             if srv not in gcfg.mcp_servers:
                 errors.append(f"check 2: {where}: mcp_server '{srv}' not in global.mcp_servers")
+
+        # 13. graph resolves to a registered fragment builder (fail boot, not first request).
+        if bot.graph not in known_graphs():
+            errors.append(
+                f"check 13: {where}: graph '{bot.graph}' is not registered "
+                f"(known: {', '.join(known_graphs())})"
+            )
 
         # 4. id regex (uniqueness handled in loader).
         if not _ID_RE.match(bot.id):

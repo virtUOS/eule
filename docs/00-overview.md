@@ -64,6 +64,8 @@ deployment without touching bots.
 | `04-node-contract.md` | Internal LangGraph interface every bot satisfies. |
 | `05-accessibility.md` | Widget WCAG 2.1 AA spec. |
 | `06-integration-and-tests.md` | End-to-end sequences + full test plan. |
+| `07-deployment.md` | Deployment topology, widget delivery, external-service config. |
+| `08-integration-scenarios.md` | How to plug a backend in (MCP / RAG / OpenAI-compatible / migrate). |
 | `BUILD_PLAN.md` | Sequenced implementation steps. |
 | `design/widget-mockup/` | Visual/interaction design reference + standalone demo. |
 

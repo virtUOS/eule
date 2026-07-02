@@ -72,6 +72,11 @@ class McpServer(BaseModel):
     transport: Literal["stdio", "streamable-http"]
     url: str | None = None
     timeout_s: int = 20
+    # Static bearer token to authenticate the GATEWAY to this MCP server (secret
+    # referenced by env name, never a value — golden rule 6). This is orthogonal to
+    # the per-call `_identity` the gateway injects into every tool call (docs/04 §7):
+    # that says "whose data"; this says "is the gateway allowed to connect at all".
+    bearer_token_env: str | None = None
 
 
 class AuthCfg(BaseModel):
@@ -199,6 +204,11 @@ class BotCfg(BaseModel):
 
     model: ModelCfg
     prompt: PromptCfg = Field(default_factory=PromptCfg)
+
+    # Which code-defined graph fragment this bot uses (docs/03: "config only references
+    # which graph a bot uses" — graphs themselves are never data). Resolved against the
+    # fragment registry in app/graphs/registry.py; validated at boot (check 13).
+    graph: str = "echo"
 
     requires_auth: bool = False
     identity: IdentityCfg | None = None

@@ -18,7 +18,13 @@ def emit_status(state: str, label: str, detail: str | None = None) -> None:
 
 
 def emit_sources(message_id: str, sources: list[dict[str, Any]]) -> None:
-    # sources: [{"title": str, "source": str, "url": str}], once per assistant message.
+    """sources: [{"title": str, "source": str, "url": str}], once per assistant message.
+
+    `message_id` MUST be the `.id` of the AIMessage the sources belong to (the same id
+    the model streamed its `text` deltas under) — the gateway maps it to the client-
+    facing bubble id, so passing anything else attaches the sources to the wrong (or a
+    nonexistent) bubble on the wire.
+    """
     get_stream_writer()({"type": "sources", "message_id": message_id, "sources": sources})
 
 

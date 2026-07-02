@@ -42,6 +42,15 @@ mcp_servers:
     transport: "streamable-http"
     url: "http://enrollment-mcp:9000/mcp"
     timeout_s: 20
+  it-helpdesk:                              # externally-hosted MCP server, bearer-token auth
+    transport: "streamable-http"
+    url: "https://mcp-it-helpdesk.example.org/mcp"
+    timeout_s: 20
+    bearer_token_env: "IT_HELPDESK_MCP_TOKEN"  # secret by ENV NAME; authenticates the
+                                                # GATEWAY to this server — orthogonal to
+                                                # the per-call `_identity` injected into
+                                                # every tool call (docs/04 §7): this is
+                                                # "may we connect", not "whose data".
 
 auth:
   issuer: "https://sso.uni.edu/realms/university"
@@ -123,6 +132,10 @@ model:
 prompt:
   system: |
     You are the university enrollment assistant. …
+
+# Which code-defined graph fragment this bot uses (docs/04 §9; never a graph
+# DEFINITION as data, just its name). Default "echo". Checked at boot (check 13).
+graph: "enrollment"
 
 requires_auth: true
 identity:
@@ -269,6 +282,8 @@ OpenAI-surface API keys stored hashed in a secret store, never YAML. Loader reso
 11. **Auth-posture invariant:** for a router, every target bot's `requires_auth` ≤ the
     router's `requires_auth`. (A public router cannot list an auth bot.)
 12. `routes.mode` ∈ {`menu`} for v1 (`classifier` reserved, rejected in v1).
+13. `graph` resolves to a fragment registered in the code-side graph registry (fails
+    boot on a typo/unimplemented graph, rather than erroring on the bot's first request).
 
 Ship a `validate-config` CLI running all checks without booting. Wire into CI.
 

@@ -67,6 +67,12 @@ def translate(
     if mode == "custom" and isinstance(data, dict) and "type" in data:
         type_ = data["type"]
         fields = {k: v for k, v in data.items() if k != "type"}
+        # A custom event's message_id (currently only `sources`) is the fragment's raw
+        # internal id (e.g. the AIMessage.id it streamed text under) — route it through
+        # the SAME mapping as `text` so it lands on the client as the matching bubble's
+        # id, not a distinct raw id (previously a mismatch: sources bound to no bubble).
+        if "message_id" in fields:
+            fields["message_id"] = msg_ids.assign(fields["message_id"])
         return [emitter.make(type_, **fields)]
 
     return []

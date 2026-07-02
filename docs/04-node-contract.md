@@ -81,7 +81,10 @@ def ask_quick_replies(prompt: str, options: list[dict], allow_free_text: bool = 
 - `allow_free_text` is now a pure per-interrupt UX choice (let the user type instead of
   clicking a chip). It is NOT a cross-surface obligation — the OpenAI surface is gone.
 - `emit_sources` typically runs after a retrieval/MCP tool node, passing through the
-  `{title,url}` list the tool returned (or a curated subset). Do not fabricate sources.
+  `{title,source,url}` list the tool returned (or a curated subset). Do not fabricate
+  sources. `message_id` MUST be the `.id` of the AIMessage the sources belong to (the
+  same id the model streamed `text` deltas under) — the gateway maps it to the
+  client-facing bubble id; passing any other value misattaches the sources.
 - **`ask_form` removed.** Forms are not in v1. If a bot needs structured multi-field
   input, raise it — it's an additive protocol event, not a workaround.
 
