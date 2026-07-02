@@ -27,6 +27,14 @@ from ..runtime.runner import TurnRequest, run_turn
 
 router = APIRouter()
 
+
+@router.get("/healthz")
+async def healthz(request: Request) -> JSONResponse:
+    # Internal liveness/readiness probe (container + reverse-proxy healthchecks). Not
+    # public-facing: no auth, no origin gate. Reaching it means config validated + booted.
+    return JSONResponse({"status": "ok", "bots": request.app.state.registry.ids()})
+
+
 _CORS_METHODS = "POST, GET, OPTIONS"
 _CORS_HEADERS = "authorization, content-type"
 

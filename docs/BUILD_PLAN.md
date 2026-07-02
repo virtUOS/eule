@@ -7,7 +7,7 @@ Each step lists deliverables and the tests that gate it.
 
 Legend: ✅ done · 🟡 in progress · ⬜ not started
 
-- ✅ **Step 0** — repo + tooling (see per-item notes; Docker Compose + a CI workflow file still outstanding)
+- ✅ **Step 0** — repo + tooling, Docker Compose (gateway/widget/caddy), GitHub Actions CI, deployment doc (`docs/07`)
 - ✅ **Step 1** — gateway skeleton (gate green: T1, T8.1–2)
 - ✅ **Step 2** — widget skeleton (gate green: T10-A, T10-B)
 - ✅ **Step 3** — auth path (gate green: T2)
@@ -17,12 +17,12 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started
 Verified across the done steps: gateway `pytest` + `mypy --strict` + `validate-config`;
 widget Vitest + Playwright(axe) + `tsc --strict`. Work is committed on `main`.
 
-## Step 0 — Repo & tooling  ✅ (Docker Compose + CI workflow file: ⬜)
+## Step 0 — Repo & tooling  ✅
 - ✅ Repo layout per `CLAUDE.md`. `uv` for gateway (py3.12), npm+Vitest+Playwright for widget.
-- 🟡 CI checks all run locally and pass (`mypy --strict`, `tsc --strict`, `pytest`,
-  `npm test`, `validate-config`, axe via Playwright) — a CI **workflow file** (e.g.
-  `.github/workflows`) is not yet committed.
-- ⬜ Docker Compose skeleton (gateway + one placeholder MCP + reference to vLLM/Keycloak).
+- ✅ CI: `.github/workflows/ci.yml` runs `mypy --strict`, `pytest`, `validate-config`
+  (gateway) and `tsc --strict`, `npm test`, Playwright/axe (widget), plus a docker-build job.
+- ✅ Docker Compose (`gateway` + `widget` + `caddy`) + Dockerfiles + Caddyfile. vLLM/MCP/
+  Keycloak are external (URLs in config), not services. See `docs/07-deployment.md`.
 
 ## Step 1 — Gateway skeleton  ✅
 - Config models (Pydantic) + loader + `validate-config` CLI with checks 1–12

@@ -1,0 +1,19 @@
+# Front reverse proxy (docs/07-deployment.md).
+# SITE_ADDRESS: ":80" for local/plain-HTTP; a domain (e.g. assistant.uni-osnabrueck.de)
+# in production so Caddy provisions TLS automatically via ACME.
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	# Gateway API (SSE). flush_interval -1 disables response buffering so text/event-stream
+	# tokens reach the browser as they are produced.
+	handle /api/* {
+		reverse_proxy gateway:8000 {
+			flush_interval -1
+		}
+	}
+
+	# Everything else → the widget static container (widget.js, standalone page).
+	handle {
+		reverse_proxy widget:80
+	}
+}

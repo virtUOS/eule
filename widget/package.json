@@ -8,12 +8,14 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:a11y": "playwright test"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.0",
     "@playwright/test": "^1.48.0",
+    "@vitest/coverage-v8": "^2.1.0",
     "axe-core": "^4.10.0",
     "jsdom": "^25.0.0",
     "typescript": "^5.6.0",

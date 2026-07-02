@@ -1,5 +1,8 @@
 version: 1
 
+# base_url / mcp_servers.url / auth.jwks_url point at EXTERNAL services (vLLM, MCP,
+# Keycloak) that run elsewhere — see docs/07-deployment.md for a filled-in example.
+# Only the *_env fields are secrets (values in .env, never committed).
 model_providers:
   default:
     base_url: "http://vllm:8000/v1"

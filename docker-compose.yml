@@ -1,0 +1,50 @@
+# Local/reference deployment (docs/07-deployment.md). Three containers:
+#   gateway  — FastAPI SSE gateway (talks to EXTERNAL vLLM / MCP / Keycloak by URL)
+#   widget   — static server for the built widget.js (swappable for self-hosted S3)
+#   caddy    — reverse proxy + TLS: /api/* → gateway, everything else → widget
+#
+# vLLM, the MCP servers, and Keycloak run elsewhere — they are URLs in config/*.yaml,
+# not services here. Secrets come from .env (see .env.example).
+services:
+  gateway:
+    build: ./gateway
+    env_file: .env
+    environment:
+      CONFIG_DIR: /config
+    volumes:
+      - ./config:/config:ro   # config is mounted, not baked → restart to reload
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else sys.exit(1)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  widget:
+    build: ./widget
+    expose:
+      - "80"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - gateway
+      - widget
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
