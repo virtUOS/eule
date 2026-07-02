@@ -14,19 +14,27 @@ from typing import Any
 from fastapi import FastAPI
 
 from .api import native
+from .auth.keycloak import build_verifier
 from .graphs.factory import GraphCache
 from .registry.loader import load_and_validate
 from .registry.registry import Registry
 from .runtime.sessions import Sessions
 
 
-def create_app(registry: Registry, sessions: Sessions | None = None, graphs: Any = None) -> FastAPI:
+def create_app(
+    registry: Registry,
+    sessions: Sessions | None = None,
+    graphs: Any = None,
+    auth: Any = None,
+) -> FastAPI:
     sessions = sessions or Sessions()
     graphs = graphs or GraphCache(registry, sessions)
     app = FastAPI(title="Scoped AI Support Bots — Gateway")
     app.state.registry = registry
     app.state.sessions = sessions
     app.state.graphs = graphs
+    # Verifier for requires_auth bots; None when the deployment has no auth block.
+    app.state.auth = auth if auth is not None else build_verifier(registry.global_cfg.auth)
     app.include_router(native.router)
     return app
 

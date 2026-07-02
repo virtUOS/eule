@@ -15,7 +15,13 @@ model_providers:
 
 mcp_servers: {}
 
-# auth block is optional until the first requires_auth bot (Step 3).
+# Keycloak OIDC — required once any bot sets requires_auth (validation check 5).
+# These are deployment config (issuer/JWKS URL/audience), not secrets.
+auth:
+  issuer: "https://sso.uni-osnabrueck.de/realms/university"
+  jwks_url: "https://sso.uni-osnabrueck.de/realms/university/protocol/openid-connect/certs"
+  audience: "chatbots"
+  leeway_s: 30
 
 defaults:
   session_ttl_s: 1800

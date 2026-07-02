@@ -137,6 +137,7 @@ terminal `done: error`.
 | `unknown_bot` | 404 | false | Not in registry. |
 | `unauthorized` | 401 | false | Missing/invalid token. |
 | `token_expired` | 401 | true | Host should refresh + retry. |
+| `forbidden` | 403 | false | Authenticated but missing a required role/scope. |
 | `forbidden_origin` | 403 | false | Origin not in allowlist. |
 | `rate_limited` | 429 | true | Includes `retry_after`. |
 | `no_pending_interrupt` | in-stream | false | choice with nothing to resume. |

@@ -216,7 +216,7 @@ export class WolkeWidget {
   }
 
   // --- the SSE turn ---
-  private async runTurn(partial: ChatRequest): Promise<void> {
+  private async runTurn(partial: ChatRequest, authRetry = false): Promise<void> {
     this.started = true;
     this.hideError();
     this.bots.clear();
@@ -246,8 +246,14 @@ export class WolkeWidget {
       },
       onPreStreamError: (_status, err) => {
         this.clearTyping();
-        this.showError(err.message || this.s.connectionLost, err.recoverable ?? false);
         this.disableSendWhileStreaming(false);
+        // token_expired: ask the host for a fresh token (getToken is re-invoked) and
+        // retry the SAME turn once (docs/01: recoverable, "host should refresh + retry").
+        if (err.code === "token_expired" && this.opts.getToken && !authRetry) {
+          void this.runTurn(partial, true);
+          return;
+        }
+        this.showError(err.message || this.s.connectionLost, err.recoverable ?? false);
       },
     });
   }

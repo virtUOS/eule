@@ -44,11 +44,10 @@ def build_runtime_context(
     session_id: str,
     request_id: str,
     locale: str | None = None,
-    auth_header: str | None = None,  # noqa: ARG001 — used in Step 3
+    identity: Identity = ANONYMOUS,
 ) -> RuntimeContext:
-    # Step 3 will validate the bearer token against Keycloak and build a real
-    # Identity here. Until then, all identities are anonymous.
-    identity = ANONYMOUS
+    # Identity is validated PRE-STREAM in the endpoint (Keycloak, docs/01 401/403) and
+    # passed in here already-trusted. Public/no-auth bots get ANONYMOUS.
     return RuntimeContext(
         bot_id=cfg.id,
         config=cfg,

@@ -31,6 +31,8 @@
       const opts = { botId: p.get("botId") || "echo", mode, baseUrl: p.get("baseUrl") || "" };
       if (p.get("lang")) opts.lang = p.get("lang");
       if (p.get("theme") === "light" || p.get("theme") === "dark") opts.scheme = p.get("theme");
+      const tokenFn = p.get("getToken");
+      if (tokenFn && typeof window[tokenFn] === "function") opts.getToken = window[tokenFn];
       if (mode !== "launcher") opts.mount = document.getElementById("inline-mount");
       mount(opts)
         .then((w) => {

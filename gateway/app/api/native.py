@@ -13,7 +13,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
+from ..auth.keycloak import AuthError, bearer_token
 from ..registry.registry import UnknownBot
+from ..runtime.context import ANONYMOUS, Identity
 from ..runtime.events import (
     HEARTBEAT,
     HEARTBEAT_TICK,
@@ -81,6 +83,22 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
             f"Message exceeds the {cfg.max_message_chars}-character limit.",
         )
 
+    # Auth is enforced PRE-STREAM (docs/01: unauthorized/token_expired 401, forbidden 403)
+    # so no graph runs on an unauthenticated request. Identity is injected out-of-band.
+    identity: Identity = ANONYMOUS
+    if cfg.requires_auth:
+        verifier = getattr(request.app.state, "auth", None)
+        if verifier is None:
+            return _error_response(500, "internal_error", "Auth is not configured.")
+        token = bearer_token(request.headers.get("authorization"))
+        if token is None:
+            return _error_response(401, "unauthorized", "Authentication required.")
+        try:
+            assert cfg.identity is not None  # guaranteed by validation check 5
+            identity = verifier.verify(token, cfg.identity)
+        except AuthError as e:
+            return _error_response(e.status, e.code, e.message, recoverable=e.recoverable)
+
     turn = TurnRequest(
         session_id=body.session_id,
         message=body.message,
@@ -88,7 +106,7 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
         reply_to=body.reply_to,
         greeting=body.greeting,
         locale=(body.client.locale if body.client else None),
-        auth_header=request.headers.get("authorization"),
+        identity=identity,
     )
 
     async def stream() -> Any:

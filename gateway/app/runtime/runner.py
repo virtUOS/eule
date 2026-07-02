@@ -11,7 +11,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
 from ..registry.registry import Registry
-from .context import build_runtime_context
+from .context import ANONYMOUS, Identity, build_runtime_context
 from .events import PROTOCOL_VERSION, EventEmitter, MessageIds, translate
 from .sessions import Session, Sessions
 
@@ -24,7 +24,8 @@ class TurnRequest:
     reply_to: str | None = None
     greeting: bool = False
     locale: str | None = None
-    auth_header: str | None = None
+    # Trusted identity, resolved pre-stream by the endpoint (ANONYMOUS for public bots).
+    identity: Identity = ANONYMOUS
 
 
 def _initial_state(req: TurnRequest) -> dict[str, Any]:
@@ -124,7 +125,7 @@ async def run_turn(
         session_id=session.session_id,
         request_id=uuid4().hex,
         locale=req.locale,
-        auth_header=req.auth_header,
+        identity=req.identity,
     )
     graph = graphs.get(bot_id)
     config = {"configurable": {"ctx": ctx, "thread_id": session.session_id}}
