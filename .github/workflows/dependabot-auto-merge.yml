@@ -1,0 +1,42 @@
+name: Dependabot auto-merge
+
+# Auto-merge Dependabot PRs for minor and patch updates once CI is green.
+# Major updates are left for a human to review and merge.
+#
+# "CI is green" is enforced by branch protection: `gh pr merge --auto` queues the
+# PR and GitHub only merges it after the required status checks pass. For this to
+# gate on CI, the repo must have:
+#   1. Settings → General → "Allow auto-merge" enabled.
+#   2. A branch protection rule on `main` with the CI jobs (gateway, widget,
+#      docker-build) marked as required status checks.
+# Without required checks, auto-merge would merge as soon as it is enabled.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Enable auto-merge for minor/patch bumps
+    runs-on: ubuntu-latest
+    # Only act on PRs opened by Dependabot.
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Approve and enable auto-merge (minor + patch)
+        if: >-
+          steps.meta.outputs.update-type == 'version-update:semver-minor' ||
+          steps.meta.outputs.update-type == 'version-update:semver-patch'
+        run: |
+          gh pr review --approve "$PR_URL"
+          gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

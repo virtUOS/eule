@@ -73,24 +73,47 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build (and push on branch pushes) gateway
+      # Tags: always the commit sha; a v* tag push additionally gets full/major.minor
+      # semver tags (consumed by release.yml); `latest` only moves on the default
+      # branch, so a feature-branch push never clobbers it.
+      - name: Docker metadata (gateway)
+        id: meta-gateway
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/gateway
+          tags: |
+            type=sha
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build (and push on branch/tag pushes) gateway
         uses: docker/build-push-action@v7
         with:
           context: ./gateway
           push: ${{ github.event_name == 'push' }}
-          tags: |
-            ${{ env.REGISTRY }}/${{ github.repository }}/gateway:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ github.repository }}/gateway:latest
+          tags: ${{ steps.meta-gateway.outputs.tags }}
+          labels: ${{ steps.meta-gateway.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build (and push on branch pushes) widget
+      - name: Docker metadata (widget)
+        id: meta-widget
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/widget
+          tags: |
+            type=sha
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build (and push on branch/tag pushes) widget
         uses: docker/build-push-action@v7
         with:
           context: ./widget
           push: ${{ github.event_name == 'push' }}
-          tags: |
-            ${{ env.REGISTRY }}/${{ github.repository }}/widget:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ github.repository }}/widget:latest
+          tags: ${{ steps.meta-widget.outputs.tags }}
+          labels: ${{ steps.meta-widget.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

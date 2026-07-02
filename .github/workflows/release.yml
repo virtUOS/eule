@@ -1,0 +1,74 @@
+name: Release
+
+# Auto-create a GitHub Release when a semver tag is pushed — but only for minor
+# and patch bumps. Major bumps (and the leap to 1.0.0) are skipped so a human can
+# write the breaking-change notes by hand; cut their release from the GitHub UI.
+#
+# The bump type is determined by comparing the pushed tag with the previous tag.
+# The very first tag has no predecessor and is treated as releasable.
+#
+# Tags ship the gateway/widget container images via the `docker-build` job in
+# ci.yml (type=semver); this workflow only produces the Release entry with
+# auto-generated notes.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Auto-release minor/patch tags
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # need full tag history to find the previous tag
+
+      - name: Classify bump vs. previous tag
+        id: classify
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # Strip leading "v" and any prerelease/build suffix for the comparison.
+          ver="${TAG#v}"
+          cur_core="${ver%%-*}"
+          cur_major="${cur_core%%.*}"
+
+          # Previous tag reachable from this one (excludes the current tag).
+          prev="$(git describe --tags --abbrev=0 --match 'v*' "${TAG}^" 2>/dev/null || true)"
+
+          if [ -z "$prev" ]; then
+            echo "No previous tag found — treating $TAG as the initial release."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          prev_core="${prev#v}"; prev_core="${prev_core%%-*}"
+          prev_major="${prev_core%%.*}"
+
+          echo "Current: $TAG (major $cur_major) — previous: $prev (major $prev_major)"
+          if [ "$cur_major" != "$prev_major" ]; then
+            echo "Major bump detected — skipping auto-release. Cut this one by hand."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release
+        if: steps.classify.outputs.release == 'true'
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Tags carrying a prerelease suffix (e.g. v1.2.0-rc.1) are marked prerelease.
+          prerelease=""
+          case "$TAG" in
+            *-*) prerelease="--prerelease" ;;
+          esac
+          gh release create "$TAG" --title "$TAG" --generate-notes $prerelease

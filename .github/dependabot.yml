@@ -1,0 +1,59 @@
+version: 2
+updates:
+  # Gateway Python dependencies (pyproject.toml).
+  - package-ecosystem: pip
+    directory: "/gateway"
+    schedule:
+      interval: weekly
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 14
+    open-pull-requests-limit: 5
+    groups:
+      gateway-deps:
+        patterns: ["*"]
+
+  # Widget npm dependencies.
+  - package-ecosystem: npm
+    directory: "/widget"
+    schedule:
+      interval: weekly
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 14
+    open-pull-requests-limit: 5
+    groups:
+      npm-prod:
+        dependency-type: production
+      npm-dev:
+        dependency-type: development
+
+  # Container base images: the gateway/widget Dockerfiles + the caddy image pinned in
+  # docker-compose.yml (root).
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directory: "/gateway"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directory: "/widget"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # GitHub Actions used by the workflows.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
