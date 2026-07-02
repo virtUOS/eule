@@ -170,27 +170,36 @@ def build_router(cfg, subgraph_fragments: dict[str, GraphFragment]):
 
 ## 7. Tool calling with out-of-band identity (SECURITY-CRITICAL)
 
-```python
-def make_enrollment_tools(ctx: RuntimeContext, mcp_client):
-    async def get_my_credits() -> dict:                # NO identity params visible to model
-        return await mcp_call(ctx, "enrollment.get_my_credits")
-    return [tool(get_my_credits)]
-```
+Identity travels via MCP's **`_meta` request field**, NOT as a tool argument. This is a
+correction to the original arg-based design: a real MCP server (e.g. FastMCP) **silently
+drops** an unknown `_identity` argument, so the identity would vanish en route and
+own-data-only enforcement would be impossible — a security failure. `_meta` is transport
+metadata, structurally outside the tool's `inputSchema`, so the model can neither author
+nor name it (a *stronger* guarantee than a specially-named argument).
 
-- Identity-bearing params are NOT in the model-visible signature. The model cannot
-  supply someone else's id.
-- All MCP calls go through ONE wrapper that attaches `_identity` from `ctx`:
+- The model-visible tool schema is EXACTLY the tool's declared inputs — no identity
+  field. The model cannot supply someone else's id.
+- All MCP calls go through ONE wrapper (`app/mcp/client.py::mcp_call`) that passes the
+  model's args as tool `arguments` and the trusted identity separately (→ `_meta`):
 
 ```python
-async def mcp_call(ctx, tool_name, **model_args):
-    return await mcp_client.call(
+async def mcp_call(ctx, client, tool_name, **model_args):
+    return await client.call(
         tool_name,
-        _identity={"subject": ctx.identity.subject, "claims": ctx.identity.claims},
-        **model_args,
+        arguments=dict(model_args),   # model-authored → tool `arguments`
+        identity={"subject": ctx.identity.subject, "claims": ctx.identity.claims},  # → _meta
     )
 ```
 
-- The MCP server re-validates identity and enforces "own data only" (defense in depth).
+The concrete transport (`app/mcp/transport.py::StreamableHttpMcpClient`) sets
+`session.call_tool(name, arguments, meta={"identity": ...})`. The gateway's static bearer
+token (authenticating the gateway to the server — `mcp_servers.bearer_token_env`) rides
+the HTTP Authorization header, a separate concern from `_meta` identity.
+
+- The MCP server reads identity from `_meta` (e.g. FastMCP: `ctx.request_context.meta`),
+  re-validates it, and enforces "own data only" (defense in depth). A value the model
+  smuggles into `arguments` (e.g. `subject=...`) is NOT identity and must be ignored for
+  authz.
 - Tool-returned content is UNTRUSTED (indirect prompt injection). The model prompt
   clearly delimits tool output as data, not instructions.
 

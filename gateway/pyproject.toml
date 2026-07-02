@@ -11,6 +11,7 @@ dependencies = [
     "langgraph>=0.2.60",
     "langchain-core>=0.3.30",
     "langchain-openai>=0.2.0",
+    "mcp>=1.28",
     "pyjwt[crypto]>=2.9",
 ]
 
@@ -52,5 +53,5 @@ python_version = "3.12"
 strict = true
 # LangGraph/LangChain ship partial stubs; don't fail strict mode on their internals.
 [[tool.mypy.overrides]]
-module = ["langgraph.*", "langchain_core.*"]
+module = ["langgraph.*", "langchain_core.*", "mcp.*"]
 ignore_missing_imports = true

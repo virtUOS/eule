@@ -93,11 +93,14 @@ backend API to wrap).
   tool signatures carry no identity param. (streamable-HTTP transport lands in 4c.)
 - ✅ Tool allow/deny resolution (denylist wins); only allowlisted tools are bound.
 
-**4c — the real bot  ⬜ (infra-gated)**
-- Simplest bot (course catalog, read-only, likely no auth): config + graph fragment
-  (free-text + tools) + course-catalog MCP server (thin wrapper over the real API,
-  enforces authz), streamable-HTTP transport.
-- Guard node enabled for the public bot (cheap LLM classifier).
+**4c — the real bot  🟡 (infra-gated)**
+- ✅ Real streamable-HTTP MCP transport (`app/mcp/transport.py`): tool discovery +
+  tool calls; identity delivered via MCP `_meta` (NOT a tool argument — a real server
+  silently drops an extra `_identity` arg; contract corrected in docs/04 §7); gateway
+  bearer token via Authorization header. Tested against an in-memory FastMCP server.
+- ⬜ The bot itself: config + graph fragment (retrieve-then-generate or tool-agent) +
+  registering the fragment; guard classifier is built (Prereq E). Needs the live model
+  endpoint + the external MCP server to run end-to-end.
 
 - **Gate:** T4 (scoping) — T4.1/4.3 ✅, T4.2 (guard declines) ⬜ needs classifier;
   T3.2 ✅. T9 (embedding/abuse) — T9.1/2/4 ✅, T9.3 ⬜. T10-E manual SR audit + publish
