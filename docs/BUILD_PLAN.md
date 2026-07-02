@@ -3,12 +3,28 @@
 Build the generic gateway + widget skeleton first, then plug in bots. Do not reorder.
 Each step lists deliverables and the tests that gate it.
 
-## Step 0 — Repo & tooling
-- Repo layout per `CLAUDE.md`. `uv`/pip for gateway, npm+Vitest+Playwright for widget.
-- CI: `mypy --strict`, `tsc --strict`, `pytest`, `npm test`, `validate-config`, axe.
-- Docker Compose skeleton (gateway + one placeholder MCP + reference to vLLM/Keycloak).
+## Status (as of 2026-07-02)
 
-## Step 1 — Gateway skeleton
+Legend: ✅ done · 🟡 in progress · ⬜ not started
+
+- ✅ **Step 0** — repo + tooling (see per-item notes; Docker Compose + a CI workflow file still outstanding)
+- ✅ **Step 1** — gateway skeleton (gate green: T1, T8.1–2)
+- ✅ **Step 2** — widget skeleton (gate green: T10-A, T10-B)
+- ✅ **Step 3** — auth path (gate green: T2)
+- 🟡 **Step 4** — 4a (abuse/embedding, T9.1/2/4) ✅ · 4b (MCP identity wrapper + tool scoping, T4.1/4.3, T3.2) ✅ · 4c (real MCP server + bot, guard classifier T4.2, live T4/T9.3, T10-E) ⬜ **infra-gated** (needs a model endpoint + a backend API to wrap)
+- ⬜ **Step 5** · ⬜ **Step 5b** · ⬜ **Step 6**
+
+Verified across the done steps: gateway `pytest` + `mypy --strict` + `validate-config`;
+widget Vitest + Playwright(axe) + `tsc --strict`. Work is committed on `main`.
+
+## Step 0 — Repo & tooling  ✅ (Docker Compose + CI workflow file: ⬜)
+- ✅ Repo layout per `CLAUDE.md`. `uv` for gateway (py3.12), npm+Vitest+Playwright for widget.
+- 🟡 CI checks all run locally and pass (`mypy --strict`, `tsc --strict`, `pytest`,
+  `npm test`, `validate-config`, axe via Playwright) — a CI **workflow file** (e.g.
+  `.github/workflows`) is not yet committed.
+- ⬜ Docker Compose skeleton (gateway + one placeholder MCP + reference to vLLM/Keycloak).
+
+## Step 1 — Gateway skeleton  ✅
 - Config models (Pydantic) + loader + `validate-config` CLI with checks 1–12
   (`docs/03-registry.md`). Fail boot on invalid.
 - Bot registry (in-memory, typed access API).
@@ -27,7 +43,7 @@ Each step lists deliverables and the tests that gate it.
 
 - **Gate:** T1 (protocol conformance), T8.1–2 (session/TTL).
 
-## Step 2 — Widget skeleton
+## Step 2 — Widget skeleton  ✅
 - Base the visual implementation on the mockup at `design/` (see its
   README), reconciled against `docs/05-accessibility.md` §14 and the protocol event
   model. Adapt its standalone demo into the standalone page rather than rebuilding.
@@ -56,25 +72,38 @@ Each step lists deliverables and the tests that gate it.
   `/api/branding` fetch, always-visible free-text quick-replies, single live-region.
 - **Gate:** T10-A + T10-B in CI.
 
-## Step 3 — Auth path
+## Step 3 — Auth path  ✅
 - Keycloak JWT validation (JWKS, issuer, audience, leeway).
 - Bearer-token forwarding from widget via `getToken()` (Authorization header).
 - Claims → Identity → RuntimeContext (never into BotState/prompt).
 - token_expired handling end-to-end (host refresh).
 - **Gate:** T2 (auth path).
 
-## Step 4 — First MCP server + first real bot (template)
-- Simplest bot (course catalog, read-only, likely no auth).
-- MCP client wrapper with identity injection (`docs/04-node-contract.md` §7);
-  streamable-HTTP transport.
-- course-catalog MCP server (thin wrapper over the real API), enforces authz.
-- Bot config + graph fragment (free-text + tools).
-- CORS allowlist + rate limiting for public bots; per-session cost cap.
-- Guard node enabled (public bot).
-- **Gate:** T4 (scoping), T9 (embedding/abuse), T10-E manual SR audit + publish
-  conformance statement before this bot goes public.
+## Step 4 — First MCP server + first real bot (template)  🟡
+Split into slices; 4a + 4b are done, 4c is infra-gated (needs a model endpoint + a
+backend API to wrap).
 
-## Step 5 — Second bot (auth + predefined-choice flow) — the real generalization test
+**4a — embedding & abuse controls  ✅**
+- ✅ CORS allowlist + Origin gate on `/chat` (`forbidden_origin`) + OPTIONS preflight.
+- ✅ Rate limiting for public/auth bots (per (bot, client); 429 + `retry_after`).
+- ⬜ Per-session token/cost cap — deferred with the model (needs token accounting).
+
+**4b — MCP identity wrapper + structural scoping  ✅**
+- ✅ MCP client wrapper with out-of-band identity injection (`docs/04` §7); model-visible
+  tool signatures carry no identity param. (streamable-HTTP transport lands in 4c.)
+- ✅ Tool allow/deny resolution (denylist wins); only allowlisted tools are bound.
+
+**4c — the real bot  ⬜ (infra-gated)**
+- Simplest bot (course catalog, read-only, likely no auth): config + graph fragment
+  (free-text + tools) + course-catalog MCP server (thin wrapper over the real API,
+  enforces authz), streamable-HTTP transport.
+- Guard node enabled for the public bot (cheap LLM classifier).
+
+- **Gate:** T4 (scoping) — T4.1/4.3 ✅, T4.2 (guard declines) ⬜ needs classifier;
+  T3.2 ✅. T9 (embedding/abuse) — T9.1/2/4 ✅, T9.3 ⬜. T10-E manual SR audit + publish
+  conformance statement before this bot goes public ⬜.
+
+## Step 5 — Second bot (auth + predefined-choice flow) — the real generalization test  ⬜
 - enrollment bot: requires_auth + interrupt (quick-replies).
 - enrollment MCP server enforcing own-data-only.
 - Exercises everything the first bot didn't.
@@ -82,16 +111,17 @@ Each step lists deliverables and the tests that gate it.
   - Path A end-to-end (`docs/06` §Path A).
   - T3 (identity isolation) — MANDATORY.
   - T5 (interrupt lifecycle).
-  - **T7 conformance harness** green for both bots × {auth,unauth} × {native,openai}.
+  - **T7 conformance harness** green for both bots × {auth,unauth}. (The OpenAI
+    surface was cut — there is one surface; no `{native,openai}` dimension.)
 
-## Step 5b — Orchestrator (front door)
+## Step 5b — Orchestrator (front door)  ⬜
 - Compose the first two sub-bots (course-catalog + faq) into an `assistant` router
   fragment (subgraph composition, menu-first, sticky). Public router → public targets
   only (check 11).
 - Gate: T11 (routing) + Path C end-to-end. Confirm sub-bot scoping is unchanged when
   reached via the router (T11.6).
 
-## Step 6 — Remaining bots
+## Step 6 — Remaining bots  ⬜
 - Each = config + graph fragment + (reuse or new) MCP server. Fast, repetitive.
 - Each must pass T7 harness + relevant T3/T4 before enable.
 
