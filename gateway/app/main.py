@@ -18,6 +18,7 @@ from .auth.keycloak import build_verifier
 from .graphs.factory import GraphCache
 from .registry.loader import load_and_validate
 from .registry.registry import Registry
+from .runtime.ratelimit import RateLimiter
 from .runtime.sessions import Sessions
 
 
@@ -26,6 +27,7 @@ def create_app(
     sessions: Sessions | None = None,
     graphs: Any = None,
     auth: Any = None,
+    ratelimiter: RateLimiter | None = None,
 ) -> FastAPI:
     sessions = sessions or Sessions()
     graphs = graphs or GraphCache(registry, sessions)
@@ -33,6 +35,7 @@ def create_app(
     app.state.registry = registry
     app.state.sessions = sessions
     app.state.graphs = graphs
+    app.state.ratelimiter = ratelimiter or RateLimiter()
     # Verifier for requires_auth bots; None when the deployment has no auth block.
     app.state.auth = auth if auth is not None else build_verifier(registry.global_cfg.auth)
     app.include_router(native.router)

@@ -1,0 +1,103 @@
+"""T9 — Embedding & abuse (docs/06 §T9): origin gate, CORS preflight, rate limiting.
+
+T9.3 (per-session token/cost cap) needs model token accounting and lands with the
+model integration; T9.1/2/4 are gateway-level and covered here.
+"""
+
+from __future__ import annotations
+
+import httpx
+import pytest
+
+from app.graphs.factory import GraphCache
+from app.main import create_app
+from app.registry.registry import Registry
+from app.runtime.ratelimit import RateLimiter as RL
+from app.runtime.sessions import Sessions
+
+from .conftest import FakeClock, make_bot, make_global
+from .test_protocol_t1 import collect
+
+ALLOWED = "https://www.uni-osnabrueck.de"
+CHAT = "/api/v1/bots/echo/chat"
+
+
+# --- T9.1 — Origin gate on /chat -------------------------------------------
+
+async def test_t9_1_disallowed_origin_forbidden(client):
+    resp = await client.post(CHAT, json={"message": "hi"}, headers={"origin": "https://evil.example"})
+    assert resp.status_code == 403
+    assert resp.json()["code"] == "forbidden_origin"
+
+
+async def test_t9_1_allowed_origin_streams_with_cors(client):
+    async with client.stream("POST", CHAT, json={"message": "hi"}, headers={"origin": ALLOWED}) as r:
+        assert r.status_code == 200
+        assert r.headers["access-control-allow-origin"] == ALLOWED
+        assert "origin" in r.headers.get("vary", "").lower()
+        await r.aread()
+
+
+async def test_t9_1_no_origin_is_allowed(client):
+    # same-origin / non-browser clients send no Origin → not gated
+    events, _ = await collect(client, "echo", {"message": "hi"})
+    assert events[-1]["data"]["status"] == "complete"
+
+
+# --- T9.4 — CORS preflight (OPTIONS) ---------------------------------------
+
+async def test_t9_4_preflight_allowed_origin(client):
+    resp = await client.options(CHAT, headers={"origin": ALLOWED})
+    assert resp.status_code == 204
+    assert resp.headers["access-control-allow-origin"] == ALLOWED
+    assert "POST" in resp.headers["access-control-allow-methods"]
+    assert "authorization" in resp.headers["access-control-allow-headers"].lower()
+
+
+async def test_t9_4_preflight_disallowed_origin_has_no_acao(client):
+    resp = await client.options(CHAT, headers={"origin": "https://evil.example"})
+    assert resp.status_code == 204
+    assert "access-control-allow-origin" not in resp.headers
+
+
+# --- T9.2 — Rate limiting ---------------------------------------------------
+
+@pytest.fixture
+def rated(fake_clock: FakeClock):
+    gcfg = make_global()
+    bot = make_bot(
+        id="echo",  # reuse the echo graph via GraphCache
+        rate_limit={"anonymous": {"requests_per_min": 2}},
+    )
+    registry = Registry(gcfg, {"echo": bot})
+    sessions = Sessions(clock=fake_clock)
+    app = create_app(
+        registry, sessions=sessions, graphs=GraphCache(registry, sessions),
+        ratelimiter=RL(clock=fake_clock),
+    )
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+
+async def test_t9_2_rate_limit_429_with_retry_after(rated):
+    async with rated as client:
+        for _ in range(2):
+            r = await client.post(CHAT, json={"message": "hi"})
+            assert r.status_code == 200
+            await r.aread()
+        blocked = await client.post(CHAT, json={"message": "hi"})
+        assert blocked.status_code == 429
+        body = blocked.json()
+        assert body["code"] == "rate_limited"
+        assert body["recoverable"] is True
+        assert isinstance(body["retry_after"], int) and body["retry_after"] > 0
+
+
+async def test_t9_2_window_resets(rated, fake_clock: FakeClock):
+    async with rated as client:
+        for _ in range(2):
+            await (await client.post(CHAT, json={"message": "hi"})).aread()
+        assert (await client.post(CHAT, json={"message": "hi"})).status_code == 429
+        fake_clock.advance(61)  # next minute window
+        ok = await client.post(CHAT, json={"message": "hi"})
+        assert ok.status_code == 200
+        await ok.aread()

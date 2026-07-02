@@ -91,7 +91,8 @@ class AuthVerifier:
         except jwt.ExpiredSignatureError as e:
             raise AuthError.token_expired() from e
         except jwt.InvalidTokenError as e:
-            raise AuthError.unauthorized(f"Invalid token: {e}") from e
+            # Keep the detail server-side (chained cause) but don't leak it to the client.
+            raise AuthError.unauthorized() from e
 
         subject = claims.get(identity_cfg.subject_claim)
         if not subject:
