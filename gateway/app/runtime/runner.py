@@ -59,8 +59,13 @@ async def run_turn(
     session: Session
     if req.session_id is None:
         session = sessions.new(bot_id, cfg.session_ttl_s)
+        session.subject = req.identity.subject  # stamp owner (None for public bots)
     else:
         found = sessions.get(req.session_id)
+        # A session may only be continued by the subject that created it. A mismatch is
+        # treated as not-found (fail-safe, no info leak that the session exists).
+        if found is not None and found.subject != req.identity.subject:
+            found = None
         if found is None:
             # Unknown/expired session → mint a fresh one, then fail this turn so the
             # widget starts over cleanly (docs/01: session_not_found, start fresh).

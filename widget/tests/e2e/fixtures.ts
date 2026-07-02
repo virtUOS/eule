@@ -70,6 +70,20 @@ export async function stubBackend(page: Page): Promise<void> {
         { type: "text", seq: 2, message_id: "m1", delta: "Here is the answer." },
         done("complete", 3),
       ];
+    } else if (msg.includes("xss")) {
+      // a poisoned tool result: one dangerous javascript: url, one safe https url
+      events = [
+        session,
+        { type: "text", seq: 1, message_id: "m1", delta: "Answer with sources." },
+        {
+          type: "sources", seq: 2, message_id: "m1",
+          sources: [
+            { title: "Malicious", source: "evil", url: "javascript:alert(document.cookie)" },
+            { title: "Legit", source: "good.example", url: "https://good.example/page" },
+          ],
+        },
+        done("complete", 3),
+      ];
     } else if (msg.includes("two")) {
       // a turn with TWO assistant messages (distinct message_ids); sources on the first
       events = [

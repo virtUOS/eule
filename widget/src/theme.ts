@@ -14,13 +14,14 @@ export function resolveScheme(mode: ThemeConfig["dark_mode"]): Scheme {
   return mql && mql.matches ? "dark" : "light";
 }
 
+// Only genuine custom properties may be set. This stops a config/override from writing
+// a real CSS property (e.g. `background: url(https://attacker/beacon)`) onto the host.
+const TOKEN_KEY = /^--[a-zA-Z0-9-]+$/;
+
 export function applyTheme(host: HTMLElement, theme: ThemeConfig, scheme: Scheme): void {
   const tokens = scheme === "dark" ? theme.dark : theme.light;
-  for (const [key, value] of Object.entries(tokens)) {
-    host.style.setProperty(key, value);
-  }
-  for (const [key, value] of Object.entries(theme.radius ?? {})) {
-    host.style.setProperty(key, value);
+  for (const [key, value] of Object.entries({ ...tokens, ...(theme.radius ?? {}) })) {
+    if (TOKEN_KEY.test(key)) host.style.setProperty(key, value);
   }
   host.style.setProperty("color-scheme", scheme);
 }

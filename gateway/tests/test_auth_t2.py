@@ -158,6 +158,33 @@ async def test_t2_4_missing_role_forbidden(sessions):
         assert resp.json()["code"] == "forbidden"
 
 
+# SEC#2 — a session is bound to its owner; another authenticated user cannot continue it
+async def test_sec_session_bound_to_subject(sessions):
+    app = _build(_probe_fragment(), sessions)
+    async with _client(app) as client:
+        tok_a = make_token(sub="user-a")
+        ev_a, _ = await collect(
+            client, "secure", {"message": "hi"}, headers={"authorization": f"Bearer {tok_a}"}
+        )
+        assert ev_a[-1]["data"]["status"] == "complete"
+        sid = ev_a[0]["data"]["session_id"]
+
+        # a DIFFERENT authenticated user must not be able to continue user-a's session
+        tok_b = make_token(sub="user-b")
+        ev_b, _ = await collect(
+            client, "secure", {"session_id": sid, "message": "whose session?"},
+            headers={"authorization": f"Bearer {tok_b}"},
+        )
+        assert "session_not_found" in [e["data"].get("code") for e in ev_b]
+
+        # the owner can still continue it
+        ev_a2, _ = await collect(
+            client, "secure", {"session_id": sid, "message": "still me"},
+            headers={"authorization": f"Bearer {tok_a}"},
+        )
+        assert ev_a2[-1]["data"]["status"] == "complete"
+
+
 # T2.5 — token expiry between interrupt and resume → token_expired on resume,
 #          session survives, retry after refresh works
 async def test_t2_5_expiry_between_interrupt_and_resume(sessions):

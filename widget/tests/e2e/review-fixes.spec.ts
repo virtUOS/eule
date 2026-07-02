@@ -40,6 +40,24 @@ test("F7: two message_ids render two bubbles; sources bind to the first", async 
   await expect(page.locator(".cb-bot-body").nth(1)).toContainText("Second answer.");
 });
 
+// SEC#1 — a javascript: citation URL is NOT rendered as a clickable link.
+test("SEC#1: unsafe javascript: citation url is not linkified; https is", async ({ page }) => {
+  await page.goto("/?mode=inline&lang=en");
+  await waitReady(page);
+  await page.locator(".cb-input").fill("trigger xss sources");
+  await page.locator(".cb-input").press("Enter");
+  await expect(page.locator(".cb-sources")).toBeVisible();
+
+  // no anchor carries a javascript: (or any non-http) scheme
+  await expect(page.locator('.cb-sources a[href^="javascript:"]')).toHaveCount(0);
+  // exactly the one safe https source became a link
+  const links = page.locator(".cb-sources a");
+  await expect(links).toHaveCount(1);
+  await expect(links.first()).toHaveAttribute("href", /^https:\/\/good\.example/);
+  // the malicious card is still shown (as non-link text), not dropped
+  await expect(page.locator(".cb-cite", { hasText: "Malicious" })).toBeVisible();
+});
+
 // F4 — a dropped RESUME turn is not offered as retryable (the interrupt is consumed).
 test("F4: transport drop on a resume turn shows a non-recoverable error (no retry)", async ({ page }) => {
   await page.goto("/?mode=inline&lang=en");

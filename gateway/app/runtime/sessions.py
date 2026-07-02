@@ -23,6 +23,10 @@ class Session:
     bot_id: str
     created_at: float
     expires_at: float
+    # Owner subject for requires_auth bots (None for anonymous/public). A session may
+    # only be continued by the same subject — prevents cross-user conversation takeover
+    # if a session_id leaks.
+    subject: str | None = None
     # One pending interrupt per session at a time (docs/01 §Reconnection).
     pending_reply_to: str | None = None
     pending_interrupt: dict[str, Any] | None = field(default=None)

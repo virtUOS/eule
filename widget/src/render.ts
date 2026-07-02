@@ -5,6 +5,18 @@ import * as icons from "./icons";
 import type { Strings } from "./i18n";
 import type { SourceItem } from "./protocol";
 
+// Citation URLs come from tool/retrieval output — UNTRUSTED (docs/04 §7). Only http(s)
+// may become a real link; a `javascript:`/`data:` URL would execute in the host page's
+// origin on click (Shadow DOM does not isolate script). Anything else → render unlinked.
+function safeHttpUrl(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
 function srOnly(text: string): HTMLSpanElement {
   const s = document.createElement("span");
   s.className = "cb-sr-only";
@@ -69,10 +81,11 @@ export function botMessage(s: Strings, botName: string): BotMessage {
       group.setAttribute("role", "group");
       group.setAttribute("aria-label", strings.sourcesLabel);
       for (const src of sources) {
-        const card = src.url ? document.createElement("a") : document.createElement("div");
+        const href = src.url ? safeHttpUrl(src.url) : null;
+        const card = href ? document.createElement("a") : document.createElement("div");
         card.className = "cb-cite";
-        if (src.url && card instanceof HTMLAnchorElement) {
-          card.href = src.url;
+        if (href && card instanceof HTMLAnchorElement) {
+          card.href = href;
           card.target = "_blank";
           card.rel = "noopener noreferrer";
         }
