@@ -66,6 +66,7 @@ deployment without touching bots.
 | `06-integration-and-tests.md` | End-to-end sequences + full test plan. |
 | `07-deployment.md` | Deployment topology, widget delivery, external-service config. |
 | `08-integration-scenarios.md` | How to plug a backend in (MCP / RAG / OpenAI-compatible / migrate). |
+| `09-adding-a-bot.md` | Step-by-step: add a bot (config + fragment + registry). |
 | `BUILD_PLAN.md` | Sequenced implementation steps. |
 | `design/widget-mockup/` | Visual/interaction design reference + standalone demo. |
 
