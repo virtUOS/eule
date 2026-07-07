@@ -21,6 +21,7 @@ from typing import Any, AsyncContextManager, AsyncIterator, Callable
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
+from ..registry.models import McpServer
 from .client import McpResult, McpToolSpec
 
 SessionFactory = Callable[[], AsyncContextManager[ClientSession]]
@@ -87,3 +88,16 @@ class StreamableHttpMcpClient:
                 structured=getattr(result, "structuredContent", None),
                 text=_text_of(result),
             )
+
+
+def client_for(server: McpServer, bearer_token: str | None) -> StreamableHttpMcpClient:
+    """Build a client from a resolved `mcp_servers` entry (docs/03). Only streamable-http
+    is supported here; stdio transport is not used by any current bot."""
+    if server.transport != "streamable-http" or not server.url:
+        raise ValueError(
+            f"unsupported MCP server config: transport={server.transport!r} url={server.url!r} "
+            "(this build supports streamable-http with a url)"
+        )
+    return StreamableHttpMcpClient(
+        server.url, bearer_token=bearer_token, timeout_s=server.timeout_s
+    )

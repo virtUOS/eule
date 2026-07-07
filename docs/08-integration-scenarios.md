@@ -97,6 +97,13 @@ Two patterns cover the tool cases (`04` §9 has the skeletons):
 
 For Scenario 3, neither: a **passthrough** node that just streams the provider.
 
+**Worked example:** `app/graphs/it_helpdesk.py` + `config/bots/it-helpdesk.yaml` are a
+complete reference of the fixed retrieve-then-generate shape — search (`uos_search`) →
+fetch top pages (`uos_fetch`) → stream the answer → cite sources, with the model given
+no tools (scope = zero) and retrieved content framed as untrusted data. Copy it, point
+the config at your MCP server + model provider, and adapt `_parse_results`/`_page_text`
+to your server's return shapes.
+
 ## Server auth vs. per-user identity (do not conflate)
 
 Two separate concerns, both already supported:

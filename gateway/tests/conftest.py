@@ -18,7 +18,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = REPO_ROOT / "config"
 
 # Env with the referenced *_env secrets present, so check 3 passes for the real config.
-VALID_ENV = {"VLLM_API_KEY": "test-key", "VLLM_SMALL_API_KEY": "test-key"}
+VALID_ENV = {
+    "VLLM_API_KEY": "test-key",
+    "VLLM_SMALL_API_KEY": "test-key",
+    "UOS_DOCS_MCP_TOKEN": "test-token",
+}
 
 
 class FakeClock:

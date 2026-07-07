@@ -1,0 +1,48 @@
+version: 1
+id: "it-helpdesk"
+name: "IT-Helpdesk"
+description: "Answers IT questions from the Osnabrück University website (docs search)."
+enabled: true
+
+# Reference bot (docs/08 scenario 1): retrieve-then-generate over the uos-docs MCP
+# server. Connections are config-driven — swap the model provider and the mcp_servers
+# URL/token to retarget. Graph fragment: app/graphs/it_helpdesk.py.
+graph: "it-helpdesk"
+
+model:
+  provider: "fast-small"        # docs-QA; a smaller model is plenty
+  temperature: 0.1
+  max_tokens: 1024
+
+prompt:
+  system: |
+    You are the IT support assistant for Universität Osnabrück. Answer the user's
+    question using ONLY the reference material retrieved for this turn. If it does not
+    contain the answer, say so plainly and point them to the IT service desk. Never
+    invent URLs, settings, or steps. Be concise and cite the pages you used.
+
+requires_auth: false            # public website content, no per-user data
+
+tools:
+  mcp_servers: ["uos-docs"]
+  allow: ["uos_search", "uos_fetch"]
+  deny: []
+
+guard: { enabled: true, provider: "fast-small", on_out_of_scope: "decline" }
+greeting: { mode: "client_initiated" }
+
+embedding:
+  mode: "launcher"
+  allowed_origins: ["https://www.uni-osnabrueck.de"]
+
+starter_replies:
+  de:
+    - { label: "VPN einrichten",  query: "Wie richte ich den VPN ein?" }
+    - { label: "eduroam / WLAN",  query: "Wie verbinde ich mich mit eduroam?" }
+    - { label: "Passwort ändern", query: "Wie ändere ich mein Uni-Passwort?" }
+    - { label: "E-Mail",          query: "Wie richte ich meine Uni-E-Mail ein?" }
+  en:
+    - { label: "Set up VPN",      query: "How do I set up the VPN?" }
+    - { label: "eduroam / Wi-Fi", query: "How do I connect to eduroam?" }
+    - { label: "Change password", query: "How do I change my university password?" }
+    - { label: "Email",           query: "How do I set up my university email?" }

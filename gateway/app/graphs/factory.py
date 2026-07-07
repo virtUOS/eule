@@ -24,7 +24,7 @@ def build_compiled_graph(cfg: BotCfg, checkpointer: Any, registry: Registry) -> 
         assert cfg.guard.provider is not None  # guaranteed by validation check 6
         guard_model = build_chat_model(registry.provider(cfg.guard.provider))
     return build_bot_graph(
-        cfg, tools=[], fragment=build_fragment(cfg), checkpointer=checkpointer,
+        cfg, tools=[], fragment=build_fragment(cfg, registry), checkpointer=checkpointer,
         guard_model=guard_model,
     )
 

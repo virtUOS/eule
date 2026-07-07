@@ -98,9 +98,15 @@ backend API to wrap).
   tool calls; identity delivered via MCP `_meta` (NOT a tool argument — a real server
   silently drops an extra `_identity` arg; contract corrected in docs/04 §7); gateway
   bearer token via Authorization header. Tested against an in-memory FastMCP server.
-- ⬜ The bot itself: config + graph fragment (retrieve-then-generate or tool-agent) +
-  registering the fragment; guard classifier is built (Prereq E). Needs the live model
-  endpoint + the external MCP server to run end-to-end.
+- ✅ Reference bot `it-helpdesk` (`app/graphs/it_helpdesk.py`, `config/bots/it-helpdesk.yaml`):
+  retrieve-then-generate over `uos_search`/`uos_fetch`, config-driven model + MCP
+  connection, guard on, citations. Fragment registered. Tested end-to-end against an
+  in-memory MCP server + fake model.
+- ⬜ **Live run** (needs the real vLLM + MCP endpoints): set `mcp_servers.uos-docs.url`
+  + `UOS_DOCS_MCP_TOKEN`, point a provider at vLLM, run the guard/T4 live and adapt
+  `_parse_results`/`_page_text` to the server's real return shapes if needed.
+- ⬜ **Pre-public gates:** T4.2 (guard declines live), T3.3 (indirect-injection —
+  retrieved page content is untrusted), T10-E manual SR audit + conformance statement.
 
 - **Gate:** T4 (scoping) — T4.1/4.3 ✅, T4.2 (guard declines) ⬜ needs classifier;
   T3.2 ✅. T9 (embedding/abuse) — T9.1/2/4 ✅, T9.3 ⬜. T10-E manual SR audit + publish

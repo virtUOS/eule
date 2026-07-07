@@ -19,19 +19,19 @@ def test_known_graphs_includes_echo():
 
 def test_build_fragment_resolves_echo():
     cfg = make_bot(graph="echo")
-    frag = build_fragment(cfg)
+    frag = build_fragment(cfg, Registry(make_global(), {}))
     assert frag is not None
 
 
 def test_build_fragment_raises_on_unknown_graph():
     cfg = make_bot(graph="does-not-exist")
     with pytest.raises(UnknownGraph):
-        build_fragment(cfg)
+        build_fragment(cfg, Registry(make_global(), {}))
 
 
 def test_factory_uses_the_configured_graph_not_hardcoded_echo(sessions):
     calls: list[str] = []
-    FRAGMENT_BUILDERS["_probe"] = lambda cfg: (calls.append(cfg.id) or FRAGMENT_BUILDERS["echo"](cfg))
+    FRAGMENT_BUILDERS["_probe"] = lambda cfg, registry: (calls.append(cfg.id) or FRAGMENT_BUILDERS["echo"](cfg, registry))
     try:
         cfg = make_bot(id="probe-bot", graph="_probe")
         reg = Registry(make_global(), {"probe-bot": cfg})

@@ -10,10 +10,25 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
 from ..registry.registry import ResolvedProvider
+
+
+async def astream_message(model: BaseChatModel, messages: list[BaseMessage]) -> AIMessage:
+    """Stream a model to a single AIMessage. Streaming (not ainvoke) so LangGraph's
+    `stream_mode="messages"` observes each token as it is produced. The returned `.id`
+    is the run id the `text` events were tagged with — pass it to `emit_sources`."""
+    chunks = [c async for c in model.astream(messages)]
+    if not chunks:
+        return AIMessage(content="")
+    full = chunks[0]
+    for c in chunks[1:]:
+        full = full + c
+    return AIMessage(content=full.content, id=full.id)
 
 
 def build_chat_model(

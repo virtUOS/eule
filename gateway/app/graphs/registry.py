@@ -8,11 +8,15 @@ needs to change.
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from ..registry.models import BotCfg
 from .echo import build_echo_fragment
+from .it_helpdesk import build_it_helpdesk_fragment
 from .skeleton import GraphFragment
+
+if TYPE_CHECKING:
+    from ..registry.registry import Registry
 
 
 class UnknownGraph(KeyError):
@@ -20,11 +24,13 @@ class UnknownGraph(KeyError):
     (→ validate-config check 13; fails boot, per golden rule 4)."""
 
 
-FragmentBuilder = Callable[[BotCfg], GraphFragment]
+# A fragment builder gets the bot's config and the registry (to resolve its model
+# provider and MCP servers from config). Simple fragments ignore the registry.
+FragmentBuilder = Callable[[BotCfg, "Registry"], GraphFragment]
 
-# bot_id-agnostic: a fragment builder only needs the bot's own config (tools, prompt).
 FRAGMENT_BUILDERS: dict[str, FragmentBuilder] = {
-    "echo": lambda cfg: build_echo_fragment(),
+    "echo": lambda cfg, registry: build_echo_fragment(),
+    "it-helpdesk": lambda cfg, registry: build_it_helpdesk_fragment(cfg, registry),
 }
 
 
@@ -32,9 +38,9 @@ def known_graphs() -> list[str]:
     return list(FRAGMENT_BUILDERS)
 
 
-def build_fragment(cfg: BotCfg) -> GraphFragment:
+def build_fragment(cfg: BotCfg, registry: "Registry") -> GraphFragment:
     try:
         builder = FRAGMENT_BUILDERS[cfg.graph]
     except KeyError:
         raise UnknownGraph(cfg.graph) from None
-    return builder(cfg)
+    return builder(cfg, registry)

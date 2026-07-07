@@ -16,7 +16,14 @@ model_providers:
     default_model: "llama-3.1-8b-instruct"
     timeout_s: 30
 
-mcp_servers: {}
+mcp_servers:
+  # Reference: the Osnabrück docs MCP server (uos_search / uos_fetch) used by the
+  # it-helpdesk bot. Point `url` at your real server and set the bearer token in .env.
+  uos-docs:
+    transport: "streamable-http"
+    url: "https://mcp-uos-docs.example.invalid/mcp"   # PLACEHOLDER — set to the real URL
+    timeout_s: 30
+    bearer_token_env: "UOS_DOCS_MCP_TOKEN"
 
 # Keycloak OIDC — required once any bot sets requires_auth (validation check 5).
 # These are deployment config (issuer/JWKS URL/audience), not secrets.

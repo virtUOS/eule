@@ -20,6 +20,8 @@ playwright-report/
 # Env / secrets (config references *_env names; values never committed)
 .env
 .env.*
+# the template carries only var NAMES + placeholders — safe to commit
+!.env.example
 
 # OS / editor
 .DS_Store
