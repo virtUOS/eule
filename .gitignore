@@ -1,5 +1,7 @@
 # Python (gateway)
 .venv/
+# byproduct of `uv run`; our install flow uses `uv pip install -e`, not `uv sync`/lockfile
+uv.lock
 __pycache__/
 *.py[cod]
 *.egg-info/
