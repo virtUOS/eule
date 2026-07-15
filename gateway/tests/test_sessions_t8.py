@@ -52,7 +52,7 @@ async def test_t8_1_ttl_eviction_over_wire(client, fake_clock):
     first, _ = await collect(client, "echo", {"message": "hello"})
     sid = first[0]["data"]["session_id"]
 
-    fake_clock.advance(1801)  # past session_ttl_s (1800)
+    fake_clock.advance(7201)  # past session_ttl_s (default 7200)
 
     events, _ = await collect(client, "echo", {"session_id": sid, "message": "still there?"})
     codes = [e["data"].get("code") for e in events]

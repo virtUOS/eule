@@ -45,7 +45,7 @@ class Defaults(BaseModel):
     """Global defaults; per-bot overrides must match this shape (check 8)."""
 
     model_config = ConfigDict(extra="forbid")
-    session_ttl_s: int = 1800
+    session_ttl_s: int = 7200
     max_message_chars: int = 4000
     history_max_turns: int = 20
     rate_limit: RateLimit = Field(default_factory=RateLimit)

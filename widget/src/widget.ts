@@ -11,6 +11,13 @@ import type {
   ServerEvent,
   SourceItem,
 } from "./protocol";
+import {
+  clearConversation,
+  loadConversation,
+  type PersistedEntry,
+  type PersistedInterrupt,
+  saveConversation,
+} from "./persist";
 import { botMessage, type BotMessage, userMessage } from "./render";
 import { streamChat } from "./sse";
 import { applyTheme, resolveScheme, watchScheme, type Scheme } from "./theme";
@@ -27,10 +34,9 @@ export interface WidgetOptions {
   mount?: HTMLElement; // for inline/standalone; defaults to a body-appended host
 }
 
-interface PendingInterrupt {
-  replyTo: string;
-  allowFreeText: boolean;
-}
+// Full interrupt presentation is kept (not just replyTo) so it can be persisted and
+// re-rendered after a reload — the interrupt itself survives server-side.
+type PendingInterrupt = PersistedInterrupt;
 
 export class WolkeWidget {
   private readonly opts: Required<Pick<WidgetOptions, "botId" | "mode" | "lang">> & WidgetOptions;
@@ -45,6 +51,12 @@ export class WolkeWidget {
   private pending: PendingInterrupt | null = null;
   // One assistant bubble per message_id within a turn (a turn may emit several).
   private bots = new Map<string, BotMessage>();
+  // Survive-reload persistence (step 7): completed entries + the client-side mirror
+  // of the server session TTL. `turnSources` captures sources per message_id during
+  // a turn so bot entries persist with their citations.
+  private entries: PersistedEntry[] = [];
+  private expiresAt: number | null = null;
+  private turnSources = new Map<string, SourceItem[]>();
   private pendingSources: string | null = null; // announced AFTER the body, on done
   private typingEl: HTMLElement | null = null;
   private lastRequest: ChatRequest | null = null;
@@ -91,13 +103,14 @@ export class WolkeWidget {
     });
 
     this.wireEvents();
-    this.renderStarters();
+    const restored = this.rehydrate();
+    if (!restored) this.renderStarters();
 
     if (this.opts.mode === "launcher") {
       this.setOpen(false);
     } else {
       this.open = true;
-      if (this.config.greeting.mode === "bot_greeting") void this.startGreeting();
+      if (!this.started && this.config.greeting.mode === "bot_greeting") void this.startGreeting();
     }
   }
 
@@ -163,11 +176,54 @@ export class WolkeWidget {
     }
   }
 
+  // --- survive-reload persistence (step 7) ---
+  private persist(): void {
+    if (!this.sessionId || this.expiresAt === null) return;
+    saveConversation(this.opts.botId, {
+      v: 1,
+      sessionId: this.sessionId,
+      expiresAt: this.expiresAt,
+      entries: this.entries,
+      pending: this.pending,
+    });
+  }
+
+  // Rebuild the transcript UI from localStorage and continue the same server session.
+  // Silent by design: nothing is announced and focus is not moved on page load.
+  private rehydrate(): boolean {
+    const conv = loadConversation(this.opts.botId);
+    if (!conv || conv.entries.length === 0) return false;
+    this.sessionId = conv.sessionId;
+    this.expiresAt = conv.expiresAt;
+    this.entries = conv.entries;
+    this.started = true;
+    for (const entry of conv.entries) {
+      if (entry.role === "user") {
+        this.dom.log.appendChild(userMessage(entry.text, this.s));
+      } else {
+        const bot = botMessage(this.s, this.config.name);
+        bot.appendText(entry.text);
+        if (entry.sources?.length) bot.attachSources(entry.sources, this.s);
+        this.dom.log.appendChild(bot.el);
+      }
+    }
+    if (conv.pending) {
+      this.pending = conv.pending;
+      this.renderInterruptChips(conv.pending, /* restore */ true);
+    }
+    this.autoscroll();
+    return true;
+  }
+
   // --- conversation control ---
   private resetConversation(): void {
+    clearConversation(this.opts.botId);
     this.sessionId = null;
     this.pending = null;
     this.bots.clear();
+    this.entries = [];
+    this.expiresAt = null;
+    this.turnSources.clear();
     this.pendingSources = null;
     this.started = false;
     this.dom.log.replaceChildren();
@@ -220,6 +276,7 @@ export class WolkeWidget {
     this.started = true;
     this.hideError();
     this.bots.clear();
+    this.turnSources.clear();
     this.pendingSources = null;
     // A resume turn consumes its interrupt server-side; if the stream drops it CANNOT
     // be safely retried (the reply_to no longer matches) — so it is not recoverable.
@@ -262,6 +319,7 @@ export class WolkeWidget {
     switch (ev.type) {
       case "session":
         this.sessionId = ev.session_id;
+        this.expiresAt = Date.now() + ev.expires_in * 1000;
         break;
       case "status":
         this.dom.statusLine.hidden = false;
@@ -277,6 +335,7 @@ export class WolkeWidget {
       case "sources":
         // Render the footer now, but announce it AFTER the body (on done), per docs/05 §3.
         this.ensureBotMessage(ev.message_id).attachSources(ev.sources, this.s);
+        this.turnSources.set(ev.message_id, ev.sources);
         this.pendingSources = this.sourcesAnnouncement(ev.sources);
         this.autoscroll();
         break;
@@ -286,18 +345,37 @@ export class WolkeWidget {
         break;
       case "error":
         this.clearTyping();
+        // The stored transcript belongs to a session the server no longer has (the
+        // stream already delivered a FRESH session id). Drop the stale persistence;
+        // the visible log stays so the user keeps their context.
+        if (ev.code === "session_not_found") {
+          clearConversation(this.opts.botId);
+          this.entries = [];
+          this.pending = null;
+        }
         this.showError(ev.message, ev.recoverable ?? false);
         break;
       case "done":
-        this.onDone(ev.status);
+        this.onDone(ev.status, ev.expires_in);
         break;
       default:
         break; // forward-compatible: ignore unknown events
     }
   }
 
-  private onDone(status: "complete" | "awaiting_input" | "error"): void {
+  private onDone(status: "complete" | "awaiting_input" | "error", expiresIn?: number): void {
     this.dom.statusLine.hidden = true;
+    if (expiresIn !== undefined) this.expiresAt = Date.now() + expiresIn * 1000;
+    // Flush this turn's bot bubbles (insertion order = display order) into the
+    // persisted transcript — including partial text kept after an in-stream error.
+    for (const [messageId, bot] of this.bots) {
+      const text = bot.fullText();
+      if (!text) continue;
+      this.entries.push({ role: "bot", text, sources: this.turnSources.get(messageId) });
+    }
+    this.bots.clear();
+    this.turnSources.clear();
+    this.persist();
     // flush the unannounced tail of the body first, THEN the sources — so a screen
     // reader hears the answer before its citations (docs/05 §3).
     this.announcer.finalize();
@@ -321,6 +399,8 @@ export class WolkeWidget {
   // --- rendering helpers ---
   private appendUser(text: string): void {
     this.dom.log.appendChild(userMessage(text, this.s));
+    this.entries.push({ role: "user", text });
+    this.persist(); // no-op before the first session event
     this.autoscroll();
   }
 
@@ -388,21 +468,32 @@ export class WolkeWidget {
 
   // --- interrupt quick_replies (send `choice`) ---
   private renderInterrupt(ev: QuickRepliesEvent): void {
-    this.pending = { replyTo: ev.reply_to, allowFreeText: ev.allow_free_text };
+    this.pending = {
+      replyTo: ev.reply_to,
+      prompt: ev.prompt,
+      options: ev.options,
+      allowFreeText: ev.allow_free_text,
+    };
+    this.renderInterruptChips(this.pending, /* restore */ false);
+  }
+
+  // Shared by the live path and reload-rehydration. On restore, focus is NOT moved
+  // and nothing is announced (docs/05: don't steal focus / spam SR on page load).
+  private renderInterruptChips(pending: PendingInterrupt, restore: boolean): void {
     const chips = this.dom.chips;
     chips.replaceChildren();
     chips.hidden = false;
     chips.setAttribute("role", "group");
-    const labels = ev.options.map((o) => o.label).join(", ");
+    const labels = pending.options.map((o) => o.label).join(", ");
     chips.setAttribute("aria-label", `${this.s.chooseOption} ${labels}`);
 
-    if (ev.prompt) {
+    if (pending.prompt) {
       const p = document.createElement("p");
       p.className = "cb-qr-prompt";
-      p.textContent = ev.prompt;
+      p.textContent = pending.prompt;
       chips.appendChild(p);
     }
-    for (const opt of ev.options) {
+    for (const opt of pending.options) {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "cb-chip";
@@ -411,10 +502,12 @@ export class WolkeWidget {
       chips.appendChild(b);
     }
 
+    if (!pending.allowFreeText) this.disableComposer(/* announce */ !restore);
+    else this.enableComposer();
+    if (restore) return;
+
     // announce + move focus to first choice (docs/05 §4)
     this.announcer.status(`${this.s.chooseOption} ${labels}`);
-    if (!ev.allow_free_text) this.disableComposer();
-    else this.enableComposer();
     const firstBtn = chips.querySelector<HTMLButtonElement>("button");
     firstBtn?.focus();
   }
@@ -429,12 +522,12 @@ export class WolkeWidget {
   }
 
   // --- composer enable/disable (docs/05 §6) ---
-  private disableComposer(): void {
+  private disableComposer(announce = true): void {
     this.dom.input.disabled = true;
     this.dom.input.setAttribute("aria-disabled", "true");
     this.dom.input.setAttribute("aria-describedby", "cb-status-announcer");
     this.dom.sendBtn.disabled = true;
-    this.announcer.status(this.s.composerDisabledHint);
+    if (announce) this.announcer.status(this.s.composerDisabledHint);
   }
 
   private enableComposer(): void {

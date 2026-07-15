@@ -26,7 +26,7 @@ export default defineConfig({
       // (widget.ts, dom.ts, render.ts, index.ts) and static assets (icons/i18n/styles)
       // are covered by the Playwright e2e suite (T10-A/B + review-fix specs), so
       // including them here would report a misleading unit-coverage number.
-      include: ["src/sse.ts", "src/a11y.ts", "src/theme.ts"],
+      include: ["src/sse.ts", "src/a11y.ts", "src/theme.ts", "src/persist.ts"],
       reporter: ["text", "text-summary"],
     },
   },

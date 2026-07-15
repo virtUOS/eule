@@ -13,7 +13,7 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started
 - ✅ **Step 3** — auth path (gate green: T2)
 - 🟡 **Step 4** — 4a (abuse/embedding, T9.1/2/4) ✅ · 4b (MCP identity wrapper + tool scoping, T4.1/4.3, T3.2) ✅ · 4c (real MCP server + bot, guard classifier T4.2, live T4/T9.3, T10-E) ⬜ **infra-gated** (needs a model endpoint + a backend API to wrap)
 - ⬜ **Step 5** · ⬜ **Step 5b** · ⬜ **Step 6**
-- ⬜ **Consolidation track (Steps 7–10)** — askUOS onto the platform: persistence (7),
+- 🟡 **Consolidation track (Steps 7–10)** — askUOS onto the platform: persistence (7) ✅,
   query-param passthrough (8), askUOS as a bot (9, infra-gated), cutover (10). Added
   2026-07-07 from meeting requirements.
 
@@ -147,7 +147,7 @@ configurable; both anon + auth; params are non-sensitive (untrusted `context` ch
 never identity); askUOS stays public; **Kubernetes/Redis deferred — keep the swap-point
 seam, ship in-memory** (Redis stays in "Later / v2" below).
 
-**Step 7 — Survive-reload persistence (no Redis)**  ⬜
+**Step 7 — Survive-reload persistence (no Redis)**  ✅
 - `session_ttl_s` default → `7200` (per-bot overridable; mechanism already exists). No
   new store: in-memory MemorySaver + session store already survive reload on a single
   instance. Keep the checkpointer/session-store swap-point seam intact (Redis-ready).

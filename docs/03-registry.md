@@ -59,7 +59,7 @@ auth:
   leeway_s: 30
 
 defaults:
-  session_ttl_s: 1800
+  session_ttl_s: 7200   # 120 min; per-bot overridable
   max_message_chars: 4000
   history_max_turns: 20
   rate_limit:
