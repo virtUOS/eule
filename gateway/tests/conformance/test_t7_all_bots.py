@@ -125,10 +125,15 @@ async def test_t7_protocol_invariants(conformance_app, bot_id):
     dones = [d for d in datas if d["type"] == "done"]
     assert len(dones) == 1 and datas[-1]["type"] == "done"
 
-    # a normal turn with the fakes completes cleanly and streams some text
+    # a normal turn with the fakes ends cleanly: either a streamed answer
+    # (done: complete) or a pending interrupt (done: awaiting_input — e.g. the
+    # router's menu), never an error
     assert not [d for d in datas if d["type"] == "error"]
-    assert dones[0]["status"] == "complete"
-    assert any(d["type"] == "text" for d in datas)
+    assert dones[0]["status"] in ("complete", "awaiting_input")
+    if dones[0]["status"] == "complete":
+        assert any(d["type"] == "text" for d in datas)
+    else:
+        assert any(d["type"] == "quick_replies" for d in datas)
 
 
 def test_every_enabled_bot_is_covered():

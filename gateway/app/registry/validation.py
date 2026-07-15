@@ -88,6 +88,18 @@ def check_all(
                         f"check 14: {where}: graph 'tool-agent' requires a non-empty "
                         f"effective tool allowlist (allow minus deny)"
                     )
+                # router ⇔ routes consistency (BUILD_PLAN 9c): the stock router needs
+                # targets; a routes block on any other graph would be silently dead.
+                if bot.graph == "router" and (bot.routes is None or not bot.routes.targets):
+                    errors.append(
+                        f"check 14: {where}: graph 'router' requires a routes block "
+                        f"with at least one target"
+                    )
+                if bot.routes is not None and bot.graph != "router":
+                    errors.append(
+                        f"check 14: {where}: routes block present but graph is "
+                        f"'{bot.graph}' (an orchestrator must use graph 'router')"
+                    )
 
         # 4. id regex (uniqueness handled in loader).
         if not _ID_RE.match(bot.id):
@@ -140,6 +152,11 @@ def check_all(
                     continue
                 if not target.enabled:
                     errors.append(f"check 10: {where}: routes target '{tgt.bot}' is not enabled")
+                if target.routes is not None:
+                    errors.append(
+                        f"check 10: {where}: routes target '{tgt.bot}' is itself a "
+                        f"router (nested routers unsupported in v1)"
+                    )
                 # 11. auth-posture invariant: target.requires_auth <= router.requires_auth.
                 if target.requires_auth and not bot.requires_auth:
                     errors.append(

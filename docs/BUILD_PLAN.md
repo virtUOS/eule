@@ -17,7 +17,7 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started
 - 🟡 **Consolidation track (Steps 7–10)** — askUOS onto the platform: persistence (7) ✅,
   query-param passthrough (8) ✅, config-only bot authoring / stock fragments (9) ✅,
   askUOS via its OpenAI-compatible API (9a) ✅, stock router + front-door bot (9c,
-  was 5b), full MCP port (9b, deferred), cutover (10). Added
+  was 5b) ✅, full MCP port (9b, deferred), cutover (10). Added
   2026-07-07 from meeting requirements; 9a/9b split + step 9 added 2026-07-15; front
   door confirmed → 5b moved to 9c, Step 5 deferred, Step 6 dissolved (2026-07-15).
 
@@ -274,7 +274,7 @@ origin gates) while askUOS's backend keeps running unchanged as a second service
   streaming provider, like the it-helpdesk tests); T1/T7 conformance for the bot; live
   run infra-gated on the askUOS URL + key only.
 
-**Step 9c — Stock `router` fragment + the front-door bot (was Step 5b)**  ⬜
+**Step 9c — Stock `router` fragment + the front-door bot (was Step 5b)**  ✅
 The front door is a named requirement (2026-07-15). Redesigned post-step-9: the router
 is a **stock fragment** driven by the existing `routes:` config block (validation
 checks 10–12 sit ready), so the orchestrator itself is **config-only** — the target

@@ -16,6 +16,7 @@ from ..registry.models import BotCfg
 from .echo import build_echo_fragment
 from .it_helpdesk import build_it_helpdesk_fragment
 from .passthrough import PassthroughParams, build_passthrough_fragment
+from .router import RouterParams, build_router_fragment
 from .skeleton import GraphFragment
 from .tool_agent import ToolAgentParams, build_tool_agent_fragment
 
@@ -42,9 +43,10 @@ FRAGMENT_BUILDERS: dict[str, FragmentBuilder] = {
     # bespoke fragments (in-tree gateway code)
     "echo": lambda cfg, registry: build_echo_fragment(),
     "it-helpdesk": lambda cfg, registry: build_it_helpdesk_fragment(cfg, registry),
-    # stock fragments (config-only bots — BUILD_PLAN step 9)
+    # stock fragments (config-only bots — BUILD_PLAN steps 9 + 9c)
     "passthrough": lambda cfg, registry: build_passthrough_fragment(cfg, registry),
     "tool-agent": lambda cfg, registry: build_tool_agent_fragment(cfg, registry),
+    "router": lambda cfg, registry: build_router_fragment(cfg, registry),
 }
 
 # Every graph declares its `graph_params` model (check 14). Bespoke fragments take
@@ -54,6 +56,7 @@ FRAGMENT_PARAM_MODELS: dict[str, type[BaseModel]] = {
     "it-helpdesk": NoParams,
     "passthrough": PassthroughParams,
     "tool-agent": ToolAgentParams,
+    "router": RouterParams,
 }
 
 

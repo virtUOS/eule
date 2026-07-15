@@ -1,0 +1,43 @@
+version: 1
+id: "assistant"
+name: "Uni-Assistent"
+description: "Front door: routes to the university's assistants (study questions, IT help, campus search)."
+enabled: true
+
+# THE FRONT DOOR (BUILD_PLAN step 9c): a config-only orchestrator on the stock
+# router fragment. Menu-first — the entry shows one quick-reply per target; after a
+# choice the conversation sticks to that bot, with an "other topic" escape back to
+# the menu. Routing is bot logic (golden rule 8): the gateway runs this like any bot.
+graph: "router"
+graph_params: {}                # built-in de/en prompts; override menu_prompt/
+                                # ask_prompt/escape_label here if needed
+
+routes:
+  mode: "menu"                  # v1: menu only (classifier routing is v2)
+  sticky: true
+  targets:
+    - { bot: "askuos",        label: "Studium & Bewerbung (askUOS)" }
+    - { bot: "it-helpdesk",   label: "IT-Hilfe (VPN, WLAN, Passwort)" }
+    - { bot: "campus-search", label: "Campus-Suche" }
+
+model:
+  provider: "fast-small"        # unused by the menu router; reserved for v2
+                                # classifier routing
+
+requires_auth: false            # public router → public targets only (check 11)
+
+tools:
+  mcp_servers: []               # the router has NO tools of its own; each routed
+  allow: []                     # sub-bot keeps exactly its own allowlist (T11.6)
+  deny: []
+
+# The menu structurally constrains scope (users pick a lane); sub-bots bring their
+# own guards per their configs. Router-level guard reserved for v2 free-text entry.
+guard: { enabled: false }
+greeting: { mode: "bot_greeting" }   # menu-first: the menu IS the greeting
+
+embedding:
+  mode: "launcher"
+  allowed_origins: ["https://www.uni-osnabrueck.de"]
+
+# No starter_replies: the router's menu (protocol quick_replies) fills that role.

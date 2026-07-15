@@ -102,6 +102,15 @@ boot, check 14 — see `docs/03`). That's the whole "development" step; skip to 
   out-of-band on every call (`docs/04` §7) regardless of fragment choice. Works for
   auth bots too.
 
+- **`router`** — the orchestrator / front door (`docs/04` §6b): menu-first
+  `quick_replies` with one option per `routes.targets[]`, sticky after a choice, an
+  "other topic" escape back to the menu. Each target's fragment is composed as a
+  subgraph built from **its own** config, so per-sub-bot tool scoping is unchanged
+  (T11.6). Requires a `routes` block (check 14); nested routers rejected (check 10).
+  Optional `graph_params`: `menu_prompt` / `ask_prompt` / `escape_label`
+  (base-language → text maps over built-in de/en defaults). Worked reference:
+  `config/bots/assistant.yaml`.
+
 Config-only bots have no bot-specific tests; the **per-bot conformance harness**
 (`gateway/tests/conformance/`) runs every enabled bot automatically — your bot is
 covered the moment `validate-config` passes and it boots.

@@ -10,6 +10,8 @@ import asyncio
 import json
 from typing import Any, AsyncIterator
 
+from langchain_core.messages import AIMessage, AIMessageChunk
+
 PROTOCOL_VERSION = "1.1"  # 1.1: additive request `context` (docs/01 §Context)
 HEARTBEAT = ": ping\n\n"
 
@@ -58,6 +60,12 @@ def translate(
     """
     if mode == "messages":
         chunk, _meta = data
+        # Only ASSISTANT-authored content becomes `text`. LangGraph's messages mode
+        # also surfaces messages a node writes to state — e.g. the router's handoff
+        # appends the user's typed reply as a HumanMessage — and user text must never
+        # render as a bot bubble.
+        if not isinstance(chunk, (AIMessage, AIMessageChunk)):
+            return []
         content = getattr(chunk, "content", "")
         if not content:
             return []
