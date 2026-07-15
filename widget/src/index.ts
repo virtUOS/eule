@@ -3,7 +3,11 @@
 //
 //   <script src="/widget.js" data-bot-id="echo" data-mode="launcher"
 //           data-base-url="https://gateway.uni.edu" data-lang="de"
-//           data-get-token="myTokenFn"></script>
+//           data-get-token="myTokenFn"
+//           data-context-page="auto" data-context-topic="admissions"></script>
+//
+// data-context-* forwards host-page context on every turn (docs/01 §Context).
+// data-context-page="auto" sends the current page URL.
 
 import { WolkeWidget, type WidgetOptions } from "./widget";
 import type { Mode } from "./dom";
@@ -26,6 +30,13 @@ function readScriptOptions(script: HTMLScriptElement): WidgetOptions | null {
     const el = document.querySelector<HTMLElement>(script.dataset.mount);
     if (el) options.mount = el;
   }
+  const context: Record<string, string> = {};
+  if (script.dataset.contextPage) {
+    context.page = script.dataset.contextPage === "auto" ? location.href : script.dataset.contextPage;
+  }
+  if (script.dataset.contextTopic) context.topic = script.dataset.contextTopic;
+  if (script.dataset.contextLocale) context.locale = script.dataset.contextLocale;
+  if (Object.keys(context).length > 0) options.context = context;
   return options;
 }
 

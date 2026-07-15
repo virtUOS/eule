@@ -31,6 +31,11 @@
       const opts = { botId: p.get("botId") || "echo", mode, baseUrl: p.get("baseUrl") || "" };
       if (p.get("lang")) opts.lang = p.get("lang");
       if (p.get("theme") === "light" || p.get("theme") === "dark") opts.scheme = p.get("theme");
+      // host-page context passthrough (docs/01 §Context): ?topic=…&page=…
+      const context = {};
+      if (p.get("topic")) context.topic = p.get("topic");
+      if (p.get("page")) context.page = p.get("page") === "auto" ? location.href : p.get("page");
+      if (Object.keys(context).length) opts.context = context;
       const tokenFn = p.get("getToken");
       if (tokenFn && typeof window[tokenFn] === "function") opts.getToken = window[tokenFn];
       if (mode !== "launcher") opts.mount = document.getElementById("inline-mount");

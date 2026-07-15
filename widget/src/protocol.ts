@@ -84,6 +84,14 @@ export type ServerEvent =
 
 // --- request ---------------------------------------------------------------
 
+// Host-page passthrough (docs/01 §Context). Non-sensitive situational hints only;
+// the gateway enforces a strict key allowlist + size caps and treats it as untrusted.
+export interface PageContext {
+  page?: string; // URL/identifier of the host page (≤ 2000 chars)
+  topic?: string; // routing/topic hint (≤ 200 chars)
+  locale?: string; // display-language hint (≤ 35 chars); client.locale stays authoritative
+}
+
 export interface ChatRequest {
   session_id?: string;
   message?: string;
@@ -91,6 +99,7 @@ export interface ChatRequest {
   reply_to?: string;
   greeting?: boolean;
   client?: { locale?: string; widget_version?: string; embed_origin?: string };
+  context?: PageContext;
 }
 
 // --- bootstrap config (GET /config) ----------------------------------------

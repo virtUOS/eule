@@ -24,19 +24,22 @@ class TurnRequest:
     reply_to: str | None = None
     greeting: bool = False
     locale: str | None = None
+    # Host-page passthrough, allowlist-validated pre-stream by the endpoint
+    # (docs/01 §Context). UNTRUSTED data: flows only into turn_input, never identity.
+    context: dict[str, Any] | None = None
     # Trusted identity, resolved pre-stream by the endpoint (ANONYMOUS for public bots).
     identity: Identity = ANONYMOUS
 
 
 def _initial_state(req: TurnRequest) -> dict[str, Any]:
     if req.greeting and req.message is None:
-        return {"messages": [], "turn_input": {"kind": "greeting"}, "scratch": {}}
-    text = req.message or ""
-    return {
-        "messages": [HumanMessage(content=text)],
-        "turn_input": {"kind": "text", "text": text},
-        "scratch": {},
-    }
+        turn_input: dict[str, Any] = {"kind": "greeting"}
+    else:
+        turn_input = {"kind": "text", "text": req.message or ""}
+    if req.context is not None:
+        turn_input["context"] = req.context  # untrusted host-page data (docs/04 §5)
+    messages = [] if turn_input["kind"] == "greeting" else [HumanMessage(content=turn_input["text"])]
+    return {"messages": messages, "turn_input": turn_input, "scratch": {}}
 
 
 def _normalized_resume(req: TurnRequest) -> dict[str, Any]:

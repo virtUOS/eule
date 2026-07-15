@@ -103,6 +103,18 @@ as the `interrupt()` return value. Interrupt nodes should handle both a clicked 
 (`id` set) and — if `allow_free_text` — a typed reply (`id` None, `text` set) via
 `resolve_choice`.
 
+`message`/`greeting` turns may additionally carry host-page context
+(docs/01 §Context), already allowlist-validated by the gateway:
+
+```python
+{"kind":"text","text":"…","context":{"page":"https://…","topic":"admissions"}}
+```
+
+`turn_input["context"]` is **untrusted host-page data** — treat it exactly like
+retrieved tool output (§7): usable as *data* in a prompt (framed as data, not
+instructions), never as authorization and never merged into identity. It is absent
+when the client sent none, and never present in a resume value.
+
 ## 6. Standard graph skeleton
 
 ```

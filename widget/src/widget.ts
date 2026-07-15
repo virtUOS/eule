@@ -7,6 +7,7 @@ import { strings, type Lang, type Strings } from "./i18n";
 import type {
   BootstrapConfig,
   ChatRequest,
+  PageContext,
   QuickRepliesEvent,
   ServerEvent,
   SourceItem,
@@ -32,6 +33,9 @@ export interface WidgetOptions {
   scheme?: Scheme; // force light/dark; omit to follow the config's dark_mode (auto)
   getToken?: () => string | null | undefined | Promise<string | null | undefined>;
   mount?: HTMLElement; // for inline/standalone; defaults to a body-appended host
+  // Host-page context forwarded on every turn (docs/01 §Context). Non-sensitive
+  // hints only — the gateway rejects anything outside its allowlist/size caps.
+  context?: PageContext;
 }
 
 // Full interrupt presentation is kept (not just replyTo) so it can be persisted and
@@ -284,6 +288,7 @@ export class WolkeWidget {
     const body: ChatRequest = {
       ...partial,
       client: { locale: this.opts.lang, widget_version: WIDGET_VERSION, embed_origin: location.origin },
+      ...(this.opts.context ? { context: this.opts.context } : {}),
     };
     this.lastRequest = body;
     this.showTyping();

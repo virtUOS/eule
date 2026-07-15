@@ -10,7 +10,7 @@ import asyncio
 import json
 from typing import Any, AsyncIterator
 
-PROTOCOL_VERSION = "1.0"
+PROTOCOL_VERSION = "1.1"  # 1.1: additive request `context` (docs/01 §Context)
 HEARTBEAT = ": ping\n\n"
 
 

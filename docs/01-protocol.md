@@ -49,7 +49,8 @@ data: <single-line JSON>
 
   "reply_to": "evt_7c21",    // required when replying to a choice; echoes prompting event
   "greeting": false,         // optional; true = run bot's greeting node (see §Conversation start)
-  "client": { "locale": "en", "widget_version": "1.4.2", "embed_origin": "https://x.uni.edu" }
+  "client": { "locale": "en", "widget_version": "1.4.2", "embed_origin": "https://x.uni.edu" },
+  "context": { "page": "https://uni.edu/informatik", "topic": "admissions" }  // optional; see §Context
 }
 ```
 
@@ -58,6 +59,26 @@ Rules:
 - Resume: `session_id` + `choice` + matching `reply_to`.
 - `choice` with no pending interrupt → `error` `no_pending_interrupt`.
 - More than one input field → `400 invalid_request`.
+
+### Context (host-page passthrough)
+
+Optional, additive (v1.1). Non-sensitive situational hints the host page already
+knows, forwarded so the bot can tailor its answer (e.g. which study-program page the
+user is on, or a topic deep-link).
+
+- Allowed keys (strict allowlist), all optional strings:
+  - `page` (≤ 2000 chars) — URL or identifier of the host page.
+  - `topic` (≤ 200 chars) — routing/topic hint (menu routing stays bot logic; see 5b).
+  - `locale` (≤ 35 chars) — display-language hint; `client.locale` remains authoritative.
+- Unknown key, non-string value, or an over-cap value → `400 invalid_request`.
+  (Requests are strict here, unlike server→client events: `context` crosses a trust
+  boundary and must not become a smuggling channel.)
+- **Untrusted, never identity.** `context` is attacker-controllable host-page data.
+  It is delivered to the graph as data (`turn_input.context`, docs/04 §5), never as
+  instructions, and NEVER flows into `RuntimeContext`/identity — identity comes only
+  from the `Authorization` header (docs/04 §7).
+- Evaluated on `message`/`greeting` turns; on a resume turn it is validated but not
+  delivered (the resume value stays choice-only).
 
 ## Server → client events
 

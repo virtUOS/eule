@@ -52,6 +52,28 @@ class ChatBody(BaseModel):
     reply_to: str | None = None
     greeting: bool = False
     client: ClientInfo | None = None
+    context: dict[str, Any] | None = None  # host-page passthrough (docs/01 §Context)
+
+
+# docs/01 §Context: strict key allowlist + per-key size caps. `context` crosses a
+# trust boundary (attacker-controllable host-page data), so unlike server→client
+# events it is validated strictly — it must not become a smuggling channel.
+_CONTEXT_CAPS: dict[str, int] = {"page": 2000, "topic": 200, "locale": 35}
+
+
+def _context_error(context: dict[str, Any] | None) -> str | None:
+    """User-facing validation error, or None when the context is acceptable."""
+    if context is None:
+        return None
+    for key, value in context.items():
+        cap = _CONTEXT_CAPS.get(key)
+        if cap is None:
+            return f"Unknown context key '{key}'."
+        if not isinstance(value, str):
+            return f"context.{key} must be a string."
+        if len(value) > cap:
+            return f"context.{key} exceeds the {cap}-character limit."
+    return None
 
 
 def _error_response(
@@ -132,6 +154,11 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
             headers=cors,
         )
 
+    # Context passthrough (docs/01 §Context): strict allowlist, pre-stream.
+    ctx_err = _context_error(body.context)
+    if ctx_err is not None:
+        return _error_response(400, "invalid_request", ctx_err, headers=cors)
+
     # Enforce the per-bot char limit on any free text the user can type — a plain
     # message OR a free-text reply to a quick-reply interrupt (choice.text).
     choice_text = body.choice.get("text") if body.choice else None
@@ -182,6 +209,7 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
         reply_to=body.reply_to,
         greeting=body.greeting,
         locale=(body.client.locale if body.client else None),
+        context=body.context,
         identity=identity,
     )
 

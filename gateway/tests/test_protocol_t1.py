@@ -52,7 +52,7 @@ async def test_t1_1_first_turn_mints_session(client):
     assert first["seq"] == 0
     assert first["session_id"]
     assert first["bot_id"] == "echo"
-    assert first["protocol_version"] == "1.0"
+    assert first["protocol_version"] == "1.1"
 
 
 # T1.2 — exactly one `done`; seq monotonic from 0

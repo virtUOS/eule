@@ -14,7 +14,7 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started
 - 🟡 **Step 4** — 4a (abuse/embedding, T9.1/2/4) ✅ · 4b (MCP identity wrapper + tool scoping, T4.1/4.3, T3.2) ✅ · 4c (real MCP server + bot, guard classifier T4.2, live T4/T9.3, T10-E) ⬜ **infra-gated** (needs a model endpoint + a backend API to wrap)
 - ⬜ **Step 5** · ⬜ **Step 5b** · ⬜ **Step 6**
 - 🟡 **Consolidation track (Steps 7–10)** — askUOS onto the platform: persistence (7) ✅,
-  query-param passthrough (8), askUOS as a bot (9, infra-gated), cutover (10). Added
+  query-param passthrough (8) ✅, askUOS as a bot (9, infra-gated), cutover (10). Added
   2026-07-07 from meeting requirements.
 
 Verified across the done steps: gateway `pytest` + `mypy --strict` + `validate-config`;
@@ -156,7 +156,7 @@ seam, ship in-memory** (Redis stays in "Later / v2" below).
 - **Gate:** reload-continuity test (reload mid-conversation → same server session +
   checkpoint reused, context retained); existing T8 (session/TTL) stays green.
 
-**Step 8 — Query-parameter passthrough**  ⬜
+**Step 8 — Query-parameter passthrough**  ✅
 - Protocol: additive optional `context` object in the request body (keys `page`/`url`,
   `topic`, `locale`; size cap), documented **untrusted + non-identity**. Locale stays on
   `client.locale`/`?lang`. Update `docs/01-protocol.md`.
