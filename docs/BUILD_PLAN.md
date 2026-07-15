@@ -13,6 +13,9 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started
 - ✅ **Step 3** — auth path (gate green: T2)
 - 🟡 **Step 4** — 4a (abuse/embedding, T9.1/2/4) ✅ · 4b (MCP identity wrapper + tool scoping, T4.1/4.3, T3.2) ✅ · 4c (real MCP server + bot, guard classifier T4.2, live T4/T9.3, T10-E) ⬜ **infra-gated** (needs a model endpoint + a backend API to wrap)
 - ⬜ **Step 5** · ⬜ **Step 5b** · ⬜ **Step 6**
+- ⬜ **Consolidation track (Steps 7–10)** — askUOS onto the platform: persistence (7),
+  query-param passthrough (8), askUOS as a bot (9, infra-gated), cutover (10). Added
+  2026-07-07 from meeting requirements.
 
 Verified across the done steps: gateway `pytest` + `mypy --strict` + `validate-config`;
 widget Vitest + Playwright(axe) + `tsc --strict`. Work is committed on `main`.
@@ -133,6 +136,54 @@ backend API to wrap).
 ## Step 6 — Remaining bots  ⬜
 - Each = config + graph fragment + (reuse or new) MCP server. Fast, repetitive.
 - Each must pass T7 harness + relevant T3/T4 before enable.
+
+## Consolidation track — askUOS onto the platform  ⬜
+
+Bring the existing askUOS chatbot onto this gateway + widget, retiring its standalone
+API/auth/persistence. Two new requirements (conversation persistence, query-parameter
+passthrough) are built first as enabling platform work; askUOS then lands as a bot.
+Decisions locked (meeting 2026-07-07): survive-reload persistence only; TTL 120 min,
+configurable; both anon + auth; params are non-sensitive (untrusted `context` channel,
+never identity); askUOS stays public; **Kubernetes/Redis deferred — keep the swap-point
+seam, ship in-memory** (Redis stays in "Later / v2" below).
+
+**Step 7 — Survive-reload persistence (no Redis)**  ⬜
+- `session_ttl_s` default → `7200` (per-bot overridable; mechanism already exists). No
+  new store: in-memory MemorySaver + session store already survive reload on a single
+  instance. Keep the checkpointer/session-store swap-point seam intact (Redis-ready).
+- Widget: persist `session_id` + local transcript in `localStorage`; rehydrate the UI
+  on reload and continue the same server session. No new protocol endpoint.
+- **Gate:** reload-continuity test (reload mid-conversation → same server session +
+  checkpoint reused, context retained); existing T8 (session/TTL) stays green.
+
+**Step 8 — Query-parameter passthrough**  ⬜
+- Protocol: additive optional `context` object in the request body (keys `page`/`url`,
+  `topic`, `locale`; size cap), documented **untrusted + non-identity**. Locale stays on
+  `client.locale`/`?lang`. Update `docs/01-protocol.md`.
+- Gateway: thread `context` into `turn_input`, kept separate from the identity path;
+  validate schema (size/key allowlist). Inject into prompts as data-not-instructions
+  (it-helpdesk reference pattern).
+- Widget: read params from embed `data-*`/URL; forward in the request.
+- Routing hint: bot selection = `bot_id` in path (bootstrap); topic hint rides in
+  `context` until Step 5b routing lands.
+- **Gate:** new T12 (context reaches graph as untrusted data; oversize/unknown keys
+  rejected; no context path can populate identity — extends T3).
+
+**Step 9 — askUOS as a first-class public bot**  ⬜ (infra-gated)
+- Wrap askUOS retrieval (RAGFlow client, web-search + crawler, doc grading) as MCP
+  server(s); askUOS's own Redis search-cache stays inside that MCP server.
+- Port askUOS's self-RAG graph (agent→judge→tools→grade→generate/rewrite) as a graph
+  fragment; map state onto `BotState`+`scratch`; allowlist the MCP tools; reuse DE/EN
+  prompts; `requires_auth: false`, guard on. Register the fragment.
+- Retire askUOS's OpenAI API, static-key auth, and bespoke persistence.
+- **Gate:** T3 (identity isolation), T4 (scoping), T3.3 (indirect-injection — retrieved
+  content untrusted), T4.2 (guard declines), T7 conformance. Needs live model + RAGFlow
+  endpoints (infra-gated like Step 4c).
+
+**Step 10 — Cutover**  ⬜
+- Run gateway-hosted askUOS side-by-side with the standalone service; point widget/embeds
+  at the gateway; validate parity (DE/EN, citations, retrieval quality).
+- Decommission the standalone askUOS service.
 
 ## Later / v2 (do not build now)
 - Free-text classifier routing fallback (`routes.mode: classifier`) with a cheap model
