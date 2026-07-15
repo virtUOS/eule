@@ -14,9 +14,10 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started
 - 🟡 **Step 4** — 4a (abuse/embedding, T9.1/2/4) ✅ · 4b (MCP identity wrapper + tool scoping, T4.1/4.3, T3.2) ✅ · 4c (real MCP server + bot, guard classifier T4.2, live T4/T9.3, T10-E) ⬜ **infra-gated** (needs a model endpoint + a backend API to wrap)
 - ⬜ **Step 5** · ⬜ **Step 5b** · ⬜ **Step 6**
 - 🟡 **Consolidation track (Steps 7–10)** — askUOS onto the platform: persistence (7) ✅,
-  query-param passthrough (8) ✅, askUOS via its OpenAI-compatible API (9a, docs/08
-  Scenario 3), full MCP port (9b, deferred), cutover (10). Added 2026-07-07 from
-  meeting requirements; 9a/9b split added 2026-07-15.
+  query-param passthrough (8) ✅, config-only bot authoring / stock fragments (9),
+  askUOS via its OpenAI-compatible API (9a, docs/08 Scenario 3), full MCP port (9b,
+  deferred), cutover (10). Added 2026-07-07 from meeting requirements; 9a/9b split +
+  step 9 (stock fragments, before askUOS) added 2026-07-15.
 
 Verified across the done steps: gateway `pytest` + `mypy --strict` + `validate-config`;
 widget Vitest + Playwright(axe) + `tsc --strict`. Work is committed on `main`.
@@ -170,6 +171,55 @@ seam, ship in-memory** (Redis stays in "Later / v2" below).
 - **Gate:** new T12 (context reaches graph as untrusted data; oversize/unknown keys
   rejected; no context path can populate identity — extends T3).
 
+**Step 9 — Config-only bot authoring: stock fragments + `graph_params`**  ⬜
+Make the common bot (system prompt + LLM + MCP tools) a pure-YAML change — no fragment
+code, no registry edit, no image rebuild. Stock fragments are generic, vetted shapes
+that read everything from `BotCfg`; YAML *selects and parameterizes* them. This is NOT
+graph-as-YAML (no topology in config; graphs stay code) and NOT a self-serve builder
+(still ops-deployed, `validate-config`-gated, fail-fast). This step is what makes
+Step 6 ("remaining bots — fast, repetitive") true, and 9a consumes its first fragment.
+- **Stock `passthrough`** (docs/08 Scenario 3 shape): stream the provider with session
+  history, no tools, `status("thinking")` at turn start. Built generically from day
+  one — Step 9a's askUOS bot is its first consumer.
+- **`graph_params`** (approved 2026-07-15): additive per-bot config block (docs/03);
+  each stock fragment declares a Pydantic params model; new **validation check 14**
+  rejects unknown/invalid params for the selected `graph` at boot (spirit of check 13).
+  Bespoke fragments ignore it.
+- **Stock `tool-agent`** (decisions locked 2026-07-15): a **bounded** model-driven
+  tool loop over the allowlisted MCP tools. `graph_params.max_tool_rounds`
+  **defaults to 1** — one round of tool calls, then a final generate with no tools
+  bound, so by default a poisoned tool result can only influence answer *text*
+  (same injection posture as it-helpdesk); raising rounds is an explicit per-bot
+  opt-in that re-enters the model with tool output in context. Allowed for **auth
+  bots too** (identity stays out-of-band via `_meta`; MCP server enforces
+  own-data-only — T3 unaffected by fragment choice). Citations via explicit
+  `graph_params.sources_from: [tool, …]` (check 14 verifies ⊆ effective allowlist;
+  no magic result-shape sniffing). Auto `status("tool_call")` around calls; tool
+  output framed as untrusted data in the loop and in the final generate.
+- Stock `retrieve-then-generate` (parameterized it-helpdesk shape): deferred until a
+  second docs-QA bot appears (rule of three); it-helpdesk itself stays bespoke —
+  deterministic hand-written flow is the stronger guarantee.
+- Docs: rewrite `docs/09-adding-a-bot.md` around "config-only is the default path;
+  write a fragment only when the flow is novel"; docs/03 gains `graph_params`.
+- Ops story: bot change = edit YAML → `validate-config` in CI → restart (atomic,
+  fail-fast; config is volume-mounted). Hot-reload deliberately deferred to Later/v2.
+- **Gate:** a sample config-only bot boots with zero code changes; check 14 rejects
+  bad params (incl. `sources_from ⊄ allowlist`); T4 allowlist tests hold for stock
+  fragments; **T7 conformance harness runs against every enabled bot automatically**
+  (fake model + fake MCP — config-only bots have no bot-specific test code);
+  docs/09 updated.
+
+**Discussion note — deploying bots independently of the gateway image** (raised
+2026-07-15, to be resolved during/after Step 9): config is volume-mounted
+(`./config:/config:ro`), so config-only bots already deploy with **no image
+rebuild** — YAML change + restart. Remaining couplings to discuss: (a) bespoke
+fragments are gateway code → image rebuild by design (the rebuild IS the CI-tested
+artifact; dynamic code loading from a volume is rejected — untested code in prod);
+(b) restart drops in-memory sessions (T8.2) → frequent bot deploys strengthen the
+case for the Redis checkpointer swap (Later/v2); (c) the real decoupling lever is
+keeping bot *logic* outside the gateway (MCP servers / Scenario-3 endpoints deploy
+on their own lifecycle; the gateway stays a stable platform artifact).
+
 **Step 9a — askUOS via its OpenAI-compatible API (docs/08 Scenario 3)**  ⬜
 The cheap path first: askUOS already exposes `/v1/chat/completions`, and the gateway
 consumes OpenAI-compatible endpoints natively (that's how it talks to vLLM). This
@@ -179,9 +229,9 @@ origin gates) while askUOS's backend keeps running unchanged as a second service
   `api_key_env: ASKUOS_API_KEY`, generous `timeout_s` — search/crawl turns are slow);
   `config/bots/askuos.yaml` (`model.provider: askuos`, `tools.mcp_servers: []`,
   `requires_auth: false`, minimal/empty `prompt.system` — askUOS injects its own).
-- New **passthrough fragment** (docs/08 §Fragment shapes): stream the provider with
-  session history, no tool loop; emit `status("thinking")` at turn start (askUOS emits
-  nothing during its retrieval phases). Register in `FRAGMENT_BUILDERS`.
+- Uses the **stock `passthrough` fragment from Step 9** (`graph: "passthrough"`) — no
+  bot-specific fragment code; askUOS emits nothing during its retrieval phases, so the
+  stock fragment's `status("thinking")` covers the dead air.
 - Decisions locked: **stateless history** (send gateway history each turn — standard
   OpenAI, no coupling to askUOS's custom `thread_id`; `history_max_turns` caps it;
   askUOS trims to its own last-7 internally). **`language` via `extra_body`** (the one
@@ -223,6 +273,8 @@ citation cards, retiring the separate askUOS deployment)
 - Forms: additive `form` event + widget + a11y, when a concrete bot needs structured
   multi-field input.
 - Redis checkpointer for horizontal scaling (one-line swap in the graph factory).
+- Config hot-reload (admin reload endpoint / SIGHUP). Restart-on-change is atomic and
+  fail-fast today; hot-reload adds cache-invalidation + in-flight-session questions.
 - Optional per-bot audit logging; observability (structured per-turn logs, metrics).
 - (Only if a real consumer appears) an OpenAI-compatible translator over the internal
   event stream. Not planned.
