@@ -12,12 +12,14 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started
 - ✅ **Step 2** — widget skeleton (gate green: T10-A, T10-B)
 - ✅ **Step 3** — auth path (gate green: T2)
 - 🟡 **Step 4** — 4a (abuse/embedding, T9.1/2/4) ✅ · 4b (MCP identity wrapper + tool scoping, T4.1/4.3, T3.2) ✅ · 4c (real MCP server + bot, guard classifier T4.2, live T4/T9.3, T10-E) ⬜ **infra-gated** (needs a model endpoint + a backend API to wrap)
-- ⬜ **Step 5** · ⬜ **Step 5b** · ⬜ **Step 6**
+- ⏸ **Step 5** (deferred — no named auth-bot consumer) · **Step 5b** → moved to 9c ·
+  ✂ **Step 6** (dissolved — bots are YAML now, see Step 9)
 - 🟡 **Consolidation track (Steps 7–10)** — askUOS onto the platform: persistence (7) ✅,
   query-param passthrough (8) ✅, config-only bot authoring / stock fragments (9) ✅,
-  askUOS via its OpenAI-compatible API (9a, docs/08 Scenario 3), full MCP port (9b,
-  deferred), cutover (10). Added 2026-07-07 from meeting requirements; 9a/9b split +
-  step 9 (stock fragments, before askUOS) added 2026-07-15.
+  askUOS via its OpenAI-compatible API (9a, docs/08 Scenario 3), stock router +
+  front-door bot (9c, was 5b), full MCP port (9b, deferred), cutover (10). Added
+  2026-07-07 from meeting requirements; 9a/9b split + step 9 added 2026-07-15; front
+  door confirmed → 5b moved to 9c, Step 5 deferred, Step 6 dissolved (2026-07-15).
 
 Verified across the done steps: gateway `pytest` + `mypy --strict` + `validate-config`;
 widget Vitest + Playwright(axe) + `tsc --strict`. Work is committed on `main`.
@@ -117,27 +119,27 @@ backend API to wrap).
   T3.2 ✅. T9 (embedding/abuse) — T9.1/2/4 ✅, T9.3 ⬜. T10-E manual SR audit + publish
   conformance statement before this bot goes public ⬜.
 
-## Step 5 — Second bot (auth + predefined-choice flow) — the real generalization test  ⬜
-- enrollment bot: requires_auth + interrupt (quick-replies).
-- enrollment MCP server enforcing own-data-only.
-- Exercises everything the first bot didn't.
-- **Gate (definition of "skeleton generalizes"):**
-  - Path A end-to-end (`docs/06` §Path A).
-  - T3 (identity isolation) — MANDATORY.
-  - T5 (interrupt lifecycle).
-  - **T7 conformance harness** green for both bots × {auth,unauth}. (The OpenAI
-    surface was cut — there is one surface; no `{native,openai}` dimension.)
+## Step 5 — First auth bot (live own-data-only)  ⏸ DEFERRED (no named consumer)
+Re-scoped 2026-07-15. The original purpose ("the generalization test": auth +
+interrupts) is now covered elsewhere — the auth path is built and tested (Step 3, T2),
+and the interrupt lifecycle gets its first REAL consumer in the router (Step 9c, T5).
+What this step uniquely adds is **live own-data-only MCP enforcement (T3) against a
+real per-user backend** — and no identity-aware bot with a real backend has been asked
+for. Per the dual-API lesson (docs/02): do not build for a hypothetical consumer.
+**Un-defer when** a named identity-aware use case with a real backend exists; the
+enrollment-bot sketch below is the template then.
+- enrollment bot: requires_auth + interrupt (quick-replies); MCP server enforcing
+  own-data-only. Gate: Path A end-to-end, T3 (MANDATORY), T7 × {auth,unauth}.
 
-## Step 5b — Orchestrator (front door)  ⬜
-- Compose the first two sub-bots (course-catalog + faq) into an `assistant` router
-  fragment (subgraph composition, menu-first, sticky). Public router → public targets
-  only (check 11).
-- Gate: T11 (routing) + Path C end-to-end. Confirm sub-bot scoping is unchanged when
-  reached via the router (T11.6).
+## Step 5b — Orchestrator (front door)  → moved to Step 9c
+The front door is confirmed wanted (2026-07-15) and is now **Step 9c** in the
+consolidation track, redesigned as a *stock* `router` fragment so orchestrators are
+config-only too. See the track below for the full spec (T11 gates carry over).
 
-## Step 6 — Remaining bots  ⬜
-- Each = config + graph fragment + (reuse or new) MCP server. Fast, repetitive.
-- Each must pass T7 harness + relevant T3/T4 before enable.
+## Step 6 — Remaining bots  ✂ DISSOLVED into config authoring
+After Step 9, a bot is one YAML file on a stock fragment (docs/09) — covered by the
+per-bot conformance harness automatically. Adding bots is operations, not a build
+step. Bespoke-fragment bots (novel flows) remain possible and follow docs/09 §3b.
 
 ## Consolidation track — askUOS onto the platform  ⬜
 
@@ -167,7 +169,7 @@ seam, ship in-memory** (Redis stays in "Later / v2" below).
   (it-helpdesk reference pattern).
 - Widget: read params from embed `data-*`/URL; forward in the request.
 - Routing hint: bot selection = `bot_id` in path (bootstrap); topic hint rides in
-  `context` until Step 5b routing lands.
+  `context` until Step 9c routing lands.
 - **Gate:** new T12 (context reaches graph as untrusted data; oversize/unknown keys
   rejected; no context path can populate identity — extends T3).
 
@@ -270,6 +272,24 @@ origin gates) while askUOS's backend keeps running unchanged as a second service
 - **Gate:** fragment + config tested against a fake OpenAI-compatible endpoint (fake
   streaming provider, like the it-helpdesk tests); T1/T7 conformance for the bot; live
   run infra-gated on the askUOS URL + key only.
+
+**Step 9c — Stock `router` fragment + the front-door bot (was Step 5b)**  ⬜
+The front door is a named requirement (2026-07-15). Redesigned post-step-9: the router
+is a **stock fragment** driven by the existing `routes:` config block (validation
+checks 10–12 sit ready), so the orchestrator itself is **config-only** — the target
+picture is two YAML files: the front-door bot + the askUOS bot (9a).
+- Stock `router` fragment: composes the routed bots' fragments as subgraphs
+  (docs/04 §6b), **menu-first** via `quick_replies` (the first real consumer of the
+  interrupt machinery — T5 lands here, not in deferred Step 5), sticky routing after
+  a choice. Activates checks 10–12 (targets exist; public router → public targets
+  only; embedding-mode sanity). `GraphCache` loses its `routes` NotImplementedError.
+- Front-door bot = one YAML: `graph: "router"`, `routes:` → [askuos (9a),
+  it-helpdesk, campus-search, …]. Handoffs are ordinary `text`; menu is
+  `quick_replies` — no protocol change (docs/01 explicitly anticipates this).
+- Not infra-gated: testable against fake sub-bots (conformance harness covers the
+  front-door bot automatically once enabled).
+- **Gate:** T11 (routing) + T5 (interrupt lifecycle) + Path C end-to-end; T11.6
+  (sub-bot scoping unchanged when reached via the router); check 10–12 tests.
 
 **Step 9b — Full port: askUOS as a first-class bot (MCP + fragment)**  ⬜ (deferred —
 decide after 9a has run; do it when the 9a gaps bite: context passthrough, real
