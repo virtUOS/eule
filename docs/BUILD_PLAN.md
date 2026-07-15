@@ -209,16 +209,40 @@ Step 6 ("remaining bots — fast, repetitive") true, and 9a consumes its first f
   (fake model + fake MCP — config-only bots have no bot-specific test code);
   docs/09 updated.
 
-**Discussion note — deploying bots independently of the gateway image** (raised
-2026-07-15, to be resolved during/after Step 9): config is volume-mounted
-(`./config:/config:ro`), so config-only bots already deploy with **no image
-rebuild** — YAML change + restart. Remaining couplings to discuss: (a) bespoke
-fragments are gateway code → image rebuild by design (the rebuild IS the CI-tested
-artifact; dynamic code loading from a volume is rejected — untested code in prod);
-(b) restart drops in-memory sessions (T8.2) → frequent bot deploys strengthen the
-case for the Redis checkpointer swap (Later/v2); (c) the real decoupling lever is
-keeping bot *logic* outside the gateway (MCP servers / Scenario-3 endpoints deploy
-on their own lifecycle; the gateway stays a stable platform artifact).
+**Decision note — bot deployment decoupling & fragment extensibility** (decided
+2026-07-15; also the answer to "make the gateway generic for other institutions"):
+
+*Already true:* config is volume-mounted (`./config:/config:ro`), so config-only
+bots deploy with **no image rebuild** — YAML change + restart. Restart drops
+in-memory sessions (T8.2); frequent bot deploys strengthen the case for the Redis
+checkpointer swap (Later/v2).
+
+*The extension model is **config + external services + a growing stock library**:*
+- **(C) Bot logic lives outside the gateway** behind the two sanctioned seams — MCP
+  servers (with stock fragments in front) or Scenario-3 OpenAI-compatible endpoints.
+  Institution-owned services deploy on their own lifecycle; the gateway stays a
+  stable, generic, versioned product artifact. Per golden rule 7 (single-tenant),
+  "other institutions" means *their own deployment* of that artifact, never a shared
+  multi-tenant instance.
+- **(D) Stock fragments grow by rule-of-three promotion:** recurring bespoke shapes
+  are promoted to parameterized stock fragments (`graph_params`) and arrive via
+  normal upstream image upgrades. Params configure a *fixed* shape only — topology
+  in config (graph-as-YAML) remains a hard non-goal.
+- **Known gap to watch:** interactive flows (interrupts/quick-replies) cannot cross
+  the C seam today. If an external-institution bot genuinely needs them, the fix is
+  an additive tool-result→interrupt convention in the stock fragments — not a
+  plugin mechanism.
+
+*Rejected / blocked paths for bespoke code:*
+- **Mounted plugin directory (dynamic import): REJECTED.** Untested code inside the
+  trust boundary — skips mypy/pytest and the T3/T4 security gates; fragments hold
+  `RuntimeContext` (identity), and Python has no in-process sandbox.
+- **Plugin packages + derived image (pip/entry-points): BLOCKED as policy** — last
+  resort only, revisited solely if C+D demonstrably cannot cover a real case. Its
+  hidden cost is promoting `BotGraphBuilder`/`BotState`/`emit_*`/`mcp_call` to a
+  semver-stable public API plus shipping the security-test kit for plugin CI.
+- Bespoke fragments therefore remain **in-tree gateway code → image rebuild by
+  design** (the rebuild IS the CI-tested artifact), and rare by policy.
 
 **Step 9a — askUOS via its OpenAI-compatible API (docs/08 Scenario 3)**  ⬜
 The cheap path first: askUOS already exposes `/v1/chat/completions`, and the gateway
