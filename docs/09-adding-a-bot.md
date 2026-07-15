@@ -1,13 +1,17 @@
 # 09 — Adding a bot
 
-A bot is **a config file + a graph fragment + one registry entry** (plus, usually, an
-MCP server that runs elsewhere). The gateway drives every bot identically, so you never
-touch session handling, auth, SSE, the checkpointer, event translation, interrupt
-correlation, or the guard/decline scaffolding — those are the skeleton's job
-(`docs/04-node-contract.md` §9). You write only the middle.
+**The default path is config-only:** a bot is **one YAML file** selecting a stock
+graph fragment (`passthrough`, `tool-agent`) — no fragment code, no registry edit, no
+gateway image rebuild (config is volume-mounted; deploy = YAML + restart). Write a
+bespoke fragment **only when the flow is novel** (custom interrupts, orchestration,
+bespoke result handling). Either way the gateway drives every bot identically — you
+never touch session handling, auth, SSE, the checkpointer, event translation,
+interrupt correlation, or the guard/decline scaffolding (`docs/04-node-contract.md` §9).
 
-Worked reference throughout: **`it-helpdesk`** — `config/bots/it-helpdesk.yaml` +
-`gateway/app/graphs/it_helpdesk.py`. Copy it.
+Worked references: **`campus-search`** (`config/bots/campus-search.yaml`) — a complete
+config-only bot on the stock `tool-agent`; **`it-helpdesk`**
+(`config/bots/it-helpdesk.yaml` + `gateway/app/graphs/it_helpdesk.py`) — the bespoke
+shape. Copy whichever matches your case.
 
 ## Step 0 — Pick the integration scenario
 
@@ -72,7 +76,39 @@ starter_replies:                # persistent suggestion chips (send a normal mes
   en: [ { label: "…", query: "…" } ]
 ```
 
-## Step 3 — Write the graph fragment
+## Step 3 — Pick a stock fragment (the default: no code)
+
+Set `graph:` to a stock fragment and parameterize it with `graph_params` (validated at
+boot, check 14 — see `docs/03`). That's the whole "development" step; skip to Step 5.
+
+- **`passthrough`** — streams the bot's model provider with the session history; no
+  tools. For a plain prompted model, or a whole specialised bot behind an
+  OpenAI-compatible endpoint (`docs/08` Scenario 3). No params.
+- **`tool-agent`** — a bounded model-driven tool loop over the bot's allowlisted MCP
+  tools, then a final streamed answer from a model with no tools bound:
+
+  ```yaml
+  graph: "tool-agent"
+  graph_params:
+    max_tool_rounds: 1            # default 1: pick tools once, then answer — tool
+                                  # output can only influence answer TEXT. >1 re-enters
+                                  # the model with tool output in context (opt-in, ≤5).
+    sources_from: ["uos_search"]  # whose results become the citations footer
+    max_tool_result_chars: 4000   # per-result context budget
+  ```
+
+  Scope stays structural: only allowlisted tools are ever shown to the model, and a
+  hallucinated non-allowlisted tool name is never executed (T4). Identity rides
+  out-of-band on every call (`docs/04` §7) regardless of fragment choice. Works for
+  auth bots too.
+
+Config-only bots have no bot-specific tests; the **per-bot conformance harness**
+(`gateway/tests/conformance/`) runs every enabled bot automatically — your bot is
+covered the moment `validate-config` passes and it boots.
+
+When the stock shapes don't fit, continue below.
+
+## Step 3b — Write a bespoke graph fragment (only when the flow is novel)
 
 `gateway/app/graphs/<id>.py`. A fragment is `GraphFragment(flow)` where `flow` populates
 a `BotGraphBuilder`: add your nodes, declare the entry with `set_entry_after_guard(...)`
@@ -130,9 +166,10 @@ Two gotchas that have already bitten us:
   `stream_mode="messages"`. An auxiliary/classification call must pass
   `config={"tags": [TAG_NOSTREAM]}` (see `make_guard_node` in `skeleton.py`).
 
-## Step 4 — Register the fragment
+## Step 4 — Register the fragment (bespoke only)
 
-In `gateway/app/graphs/registry.py`, add one line to `FRAGMENT_BUILDERS`:
+In `gateway/app/graphs/registry.py`, add one line to `FRAGMENT_BUILDERS` **and** one to
+`FRAGMENT_PARAM_MODELS` (use `NoParams` unless your fragment takes `graph_params`):
 
 ```python
 "my-bot": lambda cfg, registry: build_my_fragment(cfg, registry),
@@ -146,9 +183,10 @@ The key must equal the bot's `graph:` value, or boot fails on validation check 1
 cd gateway && uv run python -m app.cli validate-config ../config/
 ```
 
-Must pass (all 13 checks, `docs/03`) before the gateway will boot. Common trips: the
-`graph` isn't registered (13), a tool's `mcp_server` isn't defined (2), a `*_env` secret
-isn't set (3), or a public bot has `guard.enabled: false` (7 — a warning).
+Must pass (all 14 checks, `docs/03`) before the gateway will boot. Common trips: the
+`graph` isn't registered (13), a `graph_params` key is misspelled or `sources_from`
+names a non-allowlisted tool (14), a tool's `mcp_server` isn't defined (2), a `*_env`
+secret isn't set (3), or a public bot has `guard.enabled: false` (7 — a warning).
 
 ## Step 6 — Tests (land with the code)
 
@@ -183,10 +221,15 @@ own-data-only from that identity (T3, mandatory). The widget supplies the token 
 
 ## Checklist
 
+Config-only bot (the default):
+
 - [ ] (tools) `mcp_servers` entry + `bearer_token_env` in `.env`/CI
-- [ ] `config/bots/<id>.yaml` (stem == id, `graph:` set, guard on if public)
-- [ ] `app/graphs/<id>.py` fragment (reads ctx at runtime, right `emit_sources` id, TAG_NOSTREAM on aux model calls)
-- [ ] one line in `FRAGMENT_BUILDERS`
-- [ ] `validate-config` passes
-- [ ] tests (T7; T4 if tools; T3 if auth)
+- [ ] `config/bots/<id>.yaml` (stem == id, `graph:` a stock fragment, `graph_params`, guard on if public)
+- [ ] `validate-config` passes (the conformance harness covers the bot automatically)
 - [ ] go-live gates (guard declines; T10-E for the first public bot)
+
+Bespoke bot (only when the flow is novel), additionally:
+
+- [ ] `app/graphs/<id>.py` fragment (reads ctx at runtime, right `emit_sources` id, TAG_NOSTREAM on aux model calls)
+- [ ] one line each in `FRAGMENT_BUILDERS` + `FRAGMENT_PARAM_MODELS`
+- [ ] bot-specific tests (T7; T4 if tools; T3 if auth — mandatory)

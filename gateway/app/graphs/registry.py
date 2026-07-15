@@ -10,10 +10,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable
 
+from pydantic import BaseModel, ConfigDict
+
 from ..registry.models import BotCfg
 from .echo import build_echo_fragment
 from .it_helpdesk import build_it_helpdesk_fragment
+from .passthrough import PassthroughParams, build_passthrough_fragment
 from .skeleton import GraphFragment
+from .tool_agent import ToolAgentParams, build_tool_agent_fragment
 
 if TYPE_CHECKING:
     from ..registry.registry import Registry
@@ -24,13 +28,32 @@ class UnknownGraph(KeyError):
     (→ validate-config check 13; fails boot, per golden rule 4)."""
 
 
+class NoParams(BaseModel):
+    """Fragments that take no `graph_params`. extra="forbid" → any key is a boot error."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
 # A fragment builder gets the bot's config and the registry (to resolve its model
 # provider and MCP servers from config). Simple fragments ignore the registry.
 FragmentBuilder = Callable[[BotCfg, "Registry"], GraphFragment]
 
 FRAGMENT_BUILDERS: dict[str, FragmentBuilder] = {
+    # bespoke fragments (in-tree gateway code)
     "echo": lambda cfg, registry: build_echo_fragment(),
     "it-helpdesk": lambda cfg, registry: build_it_helpdesk_fragment(cfg, registry),
+    # stock fragments (config-only bots — BUILD_PLAN step 9)
+    "passthrough": lambda cfg, registry: build_passthrough_fragment(cfg, registry),
+    "tool-agent": lambda cfg, registry: build_tool_agent_fragment(cfg, registry),
+}
+
+# Every graph declares its `graph_params` model (check 14). Bespoke fragments take
+# none — a stray graph_params block on them fails boot instead of being ignored.
+FRAGMENT_PARAM_MODELS: dict[str, type[BaseModel]] = {
+    "echo": NoParams,
+    "it-helpdesk": NoParams,
+    "passthrough": PassthroughParams,
+    "tool-agent": ToolAgentParams,
 }
 
 

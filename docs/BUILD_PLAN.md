@@ -14,7 +14,7 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started
 - 🟡 **Step 4** — 4a (abuse/embedding, T9.1/2/4) ✅ · 4b (MCP identity wrapper + tool scoping, T4.1/4.3, T3.2) ✅ · 4c (real MCP server + bot, guard classifier T4.2, live T4/T9.3, T10-E) ⬜ **infra-gated** (needs a model endpoint + a backend API to wrap)
 - ⬜ **Step 5** · ⬜ **Step 5b** · ⬜ **Step 6**
 - 🟡 **Consolidation track (Steps 7–10)** — askUOS onto the platform: persistence (7) ✅,
-  query-param passthrough (8) ✅, config-only bot authoring / stock fragments (9),
+  query-param passthrough (8) ✅, config-only bot authoring / stock fragments (9) ✅,
   askUOS via its OpenAI-compatible API (9a, docs/08 Scenario 3), full MCP port (9b,
   deferred), cutover (10). Added 2026-07-07 from meeting requirements; 9a/9b split +
   step 9 (stock fragments, before askUOS) added 2026-07-15.
@@ -171,7 +171,7 @@ seam, ship in-memory** (Redis stays in "Later / v2" below).
 - **Gate:** new T12 (context reaches graph as untrusted data; oversize/unknown keys
   rejected; no context path can populate identity — extends T3).
 
-**Step 9 — Config-only bot authoring: stock fragments + `graph_params`**  ⬜
+**Step 9 — Config-only bot authoring: stock fragments + `graph_params`**  ✅
 Make the common bot (system prompt + LLM + MCP tools) a pure-YAML change — no fragment
 code, no registry edit, no image rebuild. Stock fragments are generic, vetted shapes
 that read everything from `BotCfg`; YAML *selects and parameterizes* them. This is NOT

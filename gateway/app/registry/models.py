@@ -7,7 +7,7 @@ boot on stale OLD-spec fields (`form`, `openai_api`, `surface`, `primary_color`,
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -209,6 +209,10 @@ class BotCfg(BaseModel):
     # which graph a bot uses" — graphs themselves are never data). Resolved against the
     # fragment registry in app/graphs/registry.py; validated at boot (check 13).
     graph: str = "echo"
+    # Parameters for the selected fragment (docs/03 §graph_params). Each fragment
+    # declares a Pydantic params model (extra="forbid"); validated at boot (check 14).
+    # Params configure a FIXED shape — never topology (graph-as-YAML is a non-goal).
+    graph_params: dict[str, Any] = Field(default_factory=dict)
 
     requires_auth: bool = False
     identity: IdentityCfg | None = None

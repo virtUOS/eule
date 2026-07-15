@@ -135,7 +135,22 @@ prompt:
 
 # Which code-defined graph fragment this bot uses (docs/04 §9; never a graph
 # DEFINITION as data, just its name). Default "echo". Checked at boot (check 13).
+# Stock fragments ("passthrough", "tool-agent") make a bot CONFIG-ONLY — no fragment
+# code, no registry edit (docs/09).
 graph: "enrollment"
+
+# Parameters for the selected fragment (check 14). Each fragment declares a Pydantic
+# params model (extra="forbid"): unknown keys, wrong types, or out-of-range values
+# fail boot. Params configure a FIXED shape — never topology (graph-as-YAML remains
+# out of config, see §Deliberately OUT). Bespoke fragments take none.
+# For `graph: "tool-agent"`:
+#   max_tool_rounds: 1        # default 1 = pick tools once, then answer (tool output
+#                             # can only influence answer TEXT). >1 re-enters the model
+#                             # with tool output in context — explicit opt-in, max 5.
+#   sources_from: ["tool_a"]  # whose results become the `sources` event; must be a
+#                             # subset of the effective allowlist (allow − deny).
+#   max_tool_result_chars: 4000  # per-result context budget (bounded prompt)
+graph_params: {}
 
 requires_auth: true
 identity:
@@ -284,6 +299,11 @@ OpenAI-surface API keys stored hashed in a secret store, never YAML. Loader reso
 12. `routes.mode` ∈ {`menu`} for v1 (`classifier` reserved, rejected in v1).
 13. `graph` resolves to a fragment registered in the code-side graph registry (fails
     boot on a typo/unimplemented graph, rather than erroring on the bot's first request).
+14. `graph_params` validates against the selected fragment's declared params model
+    (extra="forbid": unknown keys/wrong types/out-of-range fail boot). Stock-fragment
+    invariants hold: `sources_from` ⊆ effective allowlist (allow − deny);
+    `tool-agent` requires a non-empty effective allowlist. Bespoke fragments accept
+    no params — a stray `graph_params` block on them fails boot, never silently ignored.
 
 Ship a `validate-config` CLI running all checks without booting. Wire into CI.
 

@@ -1,0 +1,50 @@
+version: 1
+id: "campus-search"
+name: "Campus-Suche"
+description: "Finds information on the Osnabrück University website (general campus questions)."
+enabled: true
+
+# CONFIG-ONLY bot (BUILD_PLAN step 9): no bespoke fragment, no code change — the
+# stock `tool-agent` shape, parameterized here. This file is the step-9 gate's
+# "sample config-only bot boots with zero code changes".
+graph: "tool-agent"
+graph_params:
+  max_tool_rounds: 1            # default posture: pick tools once, then answer
+  sources_from: ["uos_search"]  # whose results become the citations footer
+  max_tool_result_chars: 4000
+
+model:
+  provider: "fast-small"
+  temperature: 0.2
+  max_tokens: 1024
+
+prompt:
+  system: |
+    You help students and staff find information on the Universität Osnabrück
+    website. Use the available tools to look things up, then answer ONLY from what
+    they returned. If they don't contain the answer, say so plainly. Never invent
+    facts or URLs. Be concise.
+
+requires_auth: false            # public website content, no per-user data
+
+tools:
+  mcp_servers: ["uos-docs"]
+  allow: ["uos_search"]
+  deny: []
+
+guard: { enabled: true, provider: "fast-small", on_out_of_scope: "decline" }
+greeting: { mode: "client_initiated" }
+
+embedding:
+  mode: "launcher"
+  allowed_origins: ["https://www.uni-osnabrueck.de"]
+
+starter_replies:
+  de:
+    - { label: "Semestertermine", query: "Wann beginnt das Semester?" }
+    - { label: "Mensa",           query: "Wo finde ich den Mensa-Speiseplan?" }
+    - { label: "Bibliothek",      query: "Wie sind die Öffnungszeiten der Bibliothek?" }
+  en:
+    - { label: "Semester dates",  query: "When does the semester start?" }
+    - { label: "Cafeteria",       query: "Where do I find the cafeteria menu?" }
+    - { label: "Library",         query: "What are the library's opening hours?" }

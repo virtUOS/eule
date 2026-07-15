@@ -10,7 +10,9 @@ from __future__ import annotations
 import re
 from typing import Mapping
 
-from ..graphs.registry import known_graphs
+from pydantic import ValidationError
+
+from ..graphs.registry import FRAGMENT_PARAM_MODELS, known_graphs
 from .models import BotCfg, GlobalCfg
 from .theme import contrast_violations, resolve_theme
 
@@ -57,6 +59,35 @@ def check_all(
                 f"check 13: {where}: graph '{bot.graph}' is not registered "
                 f"(known: {', '.join(known_graphs())})"
             )
+
+        # 14. graph_params validate against the selected fragment's params model
+        # (docs/03 §graph_params); stock-fragment invariants hold. Skipped when the
+        # graph is unknown — check 13 already reported it.
+        elif (params_model := FRAGMENT_PARAM_MODELS.get(bot.graph)) is not None:
+            try:
+                params = params_model(**bot.graph_params)
+            except ValidationError as e:
+                for err in e.errors():
+                    loc = ".".join(str(p) for p in err["loc"]) or "(root)"
+                    errors.append(
+                        f"check 14: {where}: graph_params.{loc}: {err['msg']} "
+                        f"(graph '{bot.graph}')"
+                    )
+            else:
+                effective = set(bot.tools.allow) - set(bot.tools.deny)
+                sources_from = getattr(params, "sources_from", None)
+                if sources_from:
+                    for tool in sources_from:
+                        if tool not in effective:
+                            errors.append(
+                                f"check 14: {where}: graph_params.sources_from: "
+                                f"'{tool}' is not in the effective tool allowlist"
+                            )
+                if bot.graph == "tool-agent" and not effective:
+                    errors.append(
+                        f"check 14: {where}: graph 'tool-agent' requires a non-empty "
+                        f"effective tool allowlist (allow minus deny)"
+                    )
 
         # 4. id regex (uniqueness handled in loader).
         if not _ID_RE.match(bot.id):
