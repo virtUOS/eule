@@ -14,8 +14,9 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started
 - 🟡 **Step 4** — 4a (abuse/embedding, T9.1/2/4) ✅ · 4b (MCP identity wrapper + tool scoping, T4.1/4.3, T3.2) ✅ · 4c (real MCP server + bot, guard classifier T4.2, live T4/T9.3, T10-E) ⬜ **infra-gated** (needs a model endpoint + a backend API to wrap)
 - ⬜ **Step 5** · ⬜ **Step 5b** · ⬜ **Step 6**
 - 🟡 **Consolidation track (Steps 7–10)** — askUOS onto the platform: persistence (7) ✅,
-  query-param passthrough (8) ✅, askUOS as a bot (9, infra-gated), cutover (10). Added
-  2026-07-07 from meeting requirements.
+  query-param passthrough (8) ✅, askUOS via its OpenAI-compatible API (9a, docs/08
+  Scenario 3), full MCP port (9b, deferred), cutover (10). Added 2026-07-07 from
+  meeting requirements; 9a/9b split added 2026-07-15.
 
 Verified across the done steps: gateway `pytest` + `mypy --strict` + `validate-config`;
 widget Vitest + Playwright(axe) + `tsc --strict`. Work is committed on `main`.
@@ -169,7 +170,36 @@ seam, ship in-memory** (Redis stays in "Later / v2" below).
 - **Gate:** new T12 (context reaches graph as untrusted data; oversize/unknown keys
   rejected; no context path can populate identity — extends T3).
 
-**Step 9 — askUOS as a first-class public bot**  ⬜ (infra-gated)
+**Step 9a — askUOS via its OpenAI-compatible API (docs/08 Scenario 3)**  ⬜
+The cheap path first: askUOS already exposes `/v1/chat/completions`, and the gateway
+consumes OpenAI-compatible endpoints natively (that's how it talks to vLLM). This
+consolidates the *frontend layer* (one widget, one gateway: sessions, rate limits,
+origin gates) while askUOS's backend keeps running unchanged as a second service.
+- Config only, no gateway change: `model_providers.askuos` (`base_url` → askUOS `/v1`,
+  `api_key_env: ASKUOS_API_KEY`, generous `timeout_s` — search/crawl turns are slow);
+  `config/bots/askuos.yaml` (`model.provider: askuos`, `tools.mcp_servers: []`,
+  `requires_auth: false`, minimal/empty `prompt.system` — askUOS injects its own).
+- New **passthrough fragment** (docs/08 §Fragment shapes): stream the provider with
+  session history, no tool loop; emit `status("thinking")` at turn start (askUOS emits
+  nothing during its retrieval phases). Register in `FRAGMENT_BUILDERS`.
+- Decisions locked: **stateless history** (send gateway history each turn — standard
+  OpenAI, no coupling to askUOS's custom `thread_id`; `history_max_turns` caps it;
+  askUOS trims to its own last-7 internally). **`language` via `extra_body`** (the one
+  non-standard field worth taking; defaults German otherwise). **Guard** enabled once
+  live model infra exists (check-7 warning accepted until then; askUOS's own judge
+  nodes decline off-topic in the interim).
+- Accepted losses (documented, revisit in 9b): citations arrive as markdown *text*
+  appended by askUOS, not `sources` cards; step-8 `context` is validated by the gateway
+  but dropped (askUOS's API has no such field); the external service is trusted
+  wholesale — no MCP structural scoping (docs/08 Scenario 3 caveat; acceptable for a
+  university-owned service on public data).
+- **Gate:** fragment + config tested against a fake OpenAI-compatible endpoint (fake
+  streaming provider, like the it-helpdesk tests); T1/T7 conformance for the bot; live
+  run infra-gated on the askUOS URL + key only.
+
+**Step 9b — Full port: askUOS as a first-class bot (MCP + fragment)**  ⬜ (deferred —
+decide after 9a has run; do it when the 9a gaps bite: context passthrough, real
+citation cards, retiring the separate askUOS deployment)
 - Wrap askUOS retrieval (RAGFlow client, web-search + crawler, doc grading) as MCP
   server(s); askUOS's own Redis search-cache stays inside that MCP server.
 - Port askUOS's self-RAG graph (agent→judge→tools→grade→generate/rewrite) as a graph
@@ -181,9 +211,10 @@ seam, ship in-memory** (Redis stays in "Later / v2" below).
   endpoints (infra-gated like Step 4c).
 
 **Step 10 — Cutover**  ⬜
-- Run gateway-hosted askUOS side-by-side with the standalone service; point widget/embeds
-  at the gateway; validate parity (DE/EN, citations, retrieval quality).
-- Decommission the standalone askUOS service.
+- Run gateway-hosted askUOS (9a passthrough) side-by-side with the standalone service's
+  own frontend; point widget/embeds at the gateway; validate parity (DE/EN, citations,
+  retrieval quality). Note: the standalone askUOS *service* stays up (9a depends on it) —
+  only its separate frontend surface is retired. Full decommissioning happens with 9b.
 
 ## Later / v2 (do not build now)
 - Free-text classifier routing fallback (`routes.mode: classifier`) with a cheap model
