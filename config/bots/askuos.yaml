@@ -1,0 +1,48 @@
+version: 1
+id: "askuos"
+name: "askUOS"
+description: "General study questions for Osnabrück University: programs, applications, examination regulations."
+enabled: true
+
+# CONFIG-ONLY bot (BUILD_PLAN step 9a, docs/08 Scenario 3): the existing askUOS
+# service behind its OpenAI-compatible API, consumed via the stock passthrough.
+# askUOS keeps its own persona, retrieval, and scope enforcement server-side —
+# no prompt.system here (it would be redundant at best).
+graph: "passthrough"
+graph_params:
+  # askUOS's one non-standard request field worth taking (9a decision): the answer
+  # language. Unmapped/absent locale → field omitted → askUOS defaults to German.
+  locale_body_field: "language"
+  locale_values: { de: "Deutsch", en: "English" }
+
+model:
+  provider: "askuos"
+
+requires_auth: false            # askUOS is public today (9a decision)
+
+tools:
+  mcp_servers: []               # no gateway-side tools — everything lives behind the endpoint
+  allow: []
+  deny: []
+
+# 9a decision: guard OFF until live model infra exists (check-7 warning accepted);
+# askUOS's own judge nodes decline off-topic input in the interim. Enable with a
+# provider once vLLM is reachable.
+guard: { enabled: false }
+greeting: { mode: "client_initiated" }
+
+embedding:
+  mode: "launcher"
+  allowed_origins: ["https://www.uni-osnabrueck.de"]
+
+starter_replies:
+  de:
+    - { label: "Studiengänge",     query: "Welche Studiengänge bietet die Universität Osnabrück an?" }
+    - { label: "Bewerbung",        query: "Wie bewerbe ich mich für ein Studium?" }
+    - { label: "Prüfungsordnung",  query: "Wo finde ich die Prüfungsordnung für meinen Studiengang?" }
+    - { label: "Fristen",          query: "Welche Bewerbungsfristen gelten?" }
+  en:
+    - { label: "Study programs",   query: "Which study programs does Osnabrück University offer?" }
+    - { label: "Application",      query: "How do I apply for a study program?" }
+    - { label: "Exam regulations", query: "Where do I find the examination regulations for my program?" }
+    - { label: "Deadlines",        query: "Which application deadlines apply?" }

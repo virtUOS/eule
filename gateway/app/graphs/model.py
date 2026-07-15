@@ -18,11 +18,17 @@ from pydantic import SecretStr
 from ..registry.registry import ResolvedProvider
 
 
-async def astream_message(model: BaseChatModel, messages: list[BaseMessage]) -> AIMessage:
+async def astream_message(
+    model: BaseChatModel, messages: list[BaseMessage], **kwargs: Any
+) -> AIMessage:
     """Stream a model to a single AIMessage. Streaming (not ainvoke) so LangGraph's
     `stream_mode="messages"` observes each token as it is produced. The returned `.id`
-    is the run id the `text` events were tagged with — pass it to `emit_sources`."""
-    chunks = [c async for c in model.astream(messages)]
+    is the run id the `text` events were tagged with — pass it to `emit_sources`.
+
+    `kwargs` pass through to the provider call — e.g. `extra_body={...}` reaches an
+    OpenAI-compatible endpoint's request body verbatim (SDK-merged), which is how a
+    Scenario-3 backend's non-standard per-request fields are supplied (docs/08)."""
+    chunks = [c async for c in model.astream(messages, **kwargs)]
     if not chunks:
         return AIMessage(content="")
     full = chunks[0]

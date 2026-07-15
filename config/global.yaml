@@ -15,6 +15,16 @@ model_providers:
     api_key_env: "VLLM_SMALL_API_KEY"
     default_model: "llama-3.1-8b-instruct"
     timeout_s: 30
+  # askUOS (docs/08 Scenario 3, BUILD_PLAN 9a): a whole specialised bot behind an
+  # OpenAI-compatible endpoint — the gateway consumes it exactly like vLLM. The
+  # model name is cosmetic to askUOS; the generous timeout covers its web-search/
+  # crawl turns. Static API key = one of askUOS's API_KEYS entries.
+  askuos:
+    base_url: "https://askuos.example.invalid/v1"     # PLACEHOLDER — set to the real URL
+    api_key_env: "ASKUOS_API_KEY"
+    default_model: "askUOS-agent"
+    timeout_s: 120
+    max_retries: 1
 
 mcp_servers:
   # Reference: the Osnabrück docs MCP server (uos_search / uos_fetch) used by the

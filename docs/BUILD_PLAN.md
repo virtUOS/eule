@@ -16,8 +16,8 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started
   ✂ **Step 6** (dissolved — bots are YAML now, see Step 9)
 - 🟡 **Consolidation track (Steps 7–10)** — askUOS onto the platform: persistence (7) ✅,
   query-param passthrough (8) ✅, config-only bot authoring / stock fragments (9) ✅,
-  askUOS via its OpenAI-compatible API (9a, docs/08 Scenario 3), stock router +
-  front-door bot (9c, was 5b), full MCP port (9b, deferred), cutover (10). Added
+  askUOS via its OpenAI-compatible API (9a) ✅, stock router + front-door bot (9c,
+  was 5b), full MCP port (9b, deferred), cutover (10). Added
   2026-07-07 from meeting requirements; 9a/9b split + step 9 added 2026-07-15; front
   door confirmed → 5b moved to 9c, Step 5 deferred, Step 6 dissolved (2026-07-15).
 
@@ -246,7 +246,8 @@ checkpointer swap (Later/v2).
 - Bespoke fragments therefore remain **in-tree gateway code → image rebuild by
   design** (the rebuild IS the CI-tested artifact), and rare by policy.
 
-**Step 9a — askUOS via its OpenAI-compatible API (docs/08 Scenario 3)**  ⬜
+**Step 9a — askUOS via its OpenAI-compatible API (docs/08 Scenario 3)**  ✅ (live run
+pending only the real askUOS URL + `ASKUOS_API_KEY`)
 The cheap path first: askUOS already exposes `/v1/chat/completions`, and the gateway
 consumes OpenAI-compatible endpoints natively (that's how it talks to vLLM). This
 consolidates the *frontend layer* (one widget, one gateway: sessions, rate limits,

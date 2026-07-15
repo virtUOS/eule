@@ -21,6 +21,7 @@ CONFIG_DIR = REPO_ROOT / "config"
 VALID_ENV = {
     "VLLM_API_KEY": "test-key",
     "VLLM_SMALL_API_KEY": "test-key",
+    "ASKUOS_API_KEY": "test-key",
     "UOS_DOCS_MCP_TOKEN": "test-token",
 }
 
