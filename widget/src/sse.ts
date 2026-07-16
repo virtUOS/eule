@@ -8,6 +8,7 @@ export interface PreStreamError {
   code: string;
   message: string;
   recoverable?: boolean;
+  retry_after?: number; // seconds; present on 429 rate_limited
 }
 
 export interface StreamHandlers {
@@ -21,18 +22,21 @@ export interface StreamHandlers {
 
 // Parse one SSE frame block ("event: X\ndata: {...}") into a protocol event.
 function parseFrame(block: string): ServerEvent | null {
-  let dataLine = "";
+  const dataParts: string[] = [];
   for (const raw of block.split("\n")) {
     const line = raw.replace(/\r$/, "");
     if (line.startsWith(":")) continue; // comment / heartbeat
     if (line.startsWith("data:")) {
-      dataLine += line.slice(5).trimStart();
+      // SSE spec: strip ONE leading space (not all whitespace), and join multiple
+      // data: lines with "\n". Our gateway sends single-line JSON, but a spec-
+      // compliant server may fold a payload across lines.
+      dataParts.push(line.slice(5).replace(/^ /, ""));
     }
     // `event:` field is advisory; the payload carries its own `type`.
   }
-  if (!dataLine) return null;
+  if (dataParts.length === 0) return null;
   try {
-    return JSON.parse(dataLine) as ServerEvent;
+    return JSON.parse(dataParts.join("\n")) as ServerEvent;
   } catch {
     return null; // unparseable → ignore, never fatal
   }

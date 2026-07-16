@@ -19,7 +19,11 @@ function readScriptOptions(script: HTMLScriptElement): WidgetOptions | null {
   const win = window as unknown as Record<string, (() => string | null) | undefined>;
   const tokenFnName = script.dataset.getToken;
   const options: WidgetOptions = { botId };
-  if (script.dataset.mode) options.mode = script.dataset.mode as Mode;
+  // Only accept a known mode; an unknown value would render with no matching layout
+  // rules (silently broken). Fall back to the default launcher.
+  if (script.dataset.mode && (["launcher", "inline", "standalone"] as const).includes(script.dataset.mode as Mode)) {
+    options.mode = script.dataset.mode as Mode;
+  }
   if (script.dataset.baseUrl) options.baseUrl = script.dataset.baseUrl;
   if (script.dataset.lang) options.lang = script.dataset.lang as Lang;
   if (script.dataset.scheme === "light" || script.dataset.scheme === "dark") {

@@ -18,7 +18,6 @@ export interface Strings {
   sourcesAnnounce: (n: number, titles: string) => string;
   errorRetry: string;
   connectionLost: string;
-  thinking: string;
 }
 
 const de: Strings = {
@@ -36,7 +35,6 @@ const de: Strings = {
   sourcesAnnounce: (n, titles) => `${n} ${n === 1 ? "Quelle" : "Quellen"}: ${titles}.`,
   errorRetry: "Erneut versuchen",
   connectionLost: "Verbindung unterbrochen. Bitte erneut versuchen.",
-  thinking: "wolke denkt nach…",
 };
 
 const en: Strings = {
@@ -54,7 +52,6 @@ const en: Strings = {
   sourcesAnnounce: (n, titles) => `${n} ${n === 1 ? "source" : "sources"}: ${titles}.`,
   errorRetry: "Try again",
   connectionLost: "The connection was lost. Please try again.",
-  thinking: "wolke is thinking…",
 };
 
 export function strings(lang: Lang): Strings {

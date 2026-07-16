@@ -24,6 +24,12 @@ import { streamChat } from "./sse";
 import { applyTheme, resolveScheme, watchScheme, type Scheme } from "./theme";
 
 const WIDGET_VERSION = "0.1.0";
+const PROTOCOL_MAJOR = 1; // the wire-protocol major this widget speaks (docs/01)
+
+// Coerce any BCP-47-ish tag to a supported UI language by prefix ("en-US" → "en").
+function coerceLang(raw: string | undefined | null): Lang {
+  return (raw ?? "").toLowerCase().startsWith("en") ? "en" : "de";
+}
 
 export interface WidgetOptions {
   botId: string;
@@ -69,6 +75,10 @@ export class WolkeWidget {
   // cancel the in-flight stream instead of letting it write into a cleared log.
   private streaming = false;
   private abortCtl: AbortController | null = null;
+  // Once a turn's terminal `done` is seen, ignore any further events (a misordered or
+  // duplicated text/sources from a misbehaving server must not spawn an orphan bubble).
+  private turnComplete = false;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private releaseTrap: (() => void) | null = null;
   private unwatchScheme: (() => void) | null = null;
   private open = false;
@@ -79,7 +89,9 @@ export class WolkeWidget {
       ...options,
       botId: options.botId,
       mode: options.mode ?? "launcher",
-      lang: options.lang ?? (document.documentElement.lang === "en" ? "en" : "de"),
+      // Normalize both an explicit lang ("en-GB") and the page's lang attribute by
+      // prefix, so a regional tag no longer silently falls back to German.
+      lang: coerceLang(options.lang ?? document.documentElement.lang),
     };
     this.baseUrl = (options.baseUrl ?? "").replace(/\/$/, "");
   }
@@ -304,6 +316,7 @@ export class WolkeWidget {
     this.bots.clear();
     this.turnSources.clear();
     this.pendingSources = null;
+    this.turnComplete = false;
     // A resume turn consumes its interrupt server-side; if the stream drops it CANNOT
     // be safely retried (the reply_to no longer matches) — so it is not recoverable.
     const isResume = partial.choice !== undefined || partial.reply_to !== undefined;
@@ -344,7 +357,7 @@ export class WolkeWidget {
               void this.runTurn(partial, true);
               return;
             }
-            this.showError(err.message || this.s.connectionLost, err.recoverable ?? false);
+            this.showError(err.message || this.s.connectionLost, err.recoverable ?? false, err.retry_after);
           },
         },
         controller.signal,
@@ -365,11 +378,27 @@ export class WolkeWidget {
     this.streaming = false;
   }
 
+  // docs/01 §Versioning: clients check the MAJOR version. Minor bumps are additive, so
+  // a matching major is compatible; a different major may break — warn, don't crash
+  // (unknown events/fields are already ignored elsewhere).
+  private checkProtocolVersion(version: string): void {
+    const major = version.split(".")[0];
+    if (major !== String(PROTOCOL_MAJOR)) {
+      console.warn(
+        `[wolke-widget] server protocol v${version} != expected major v${PROTOCOL_MAJOR}; ` +
+          "some features may not work. Update the widget.",
+      );
+    }
+  }
+
   private handleEvent(ev: ServerEvent): void {
+    // Drop anything after this turn's terminal `done` (ghost-bubble guard).
+    if (this.turnComplete) return;
     switch (ev.type) {
       case "session":
         this.sessionId = ev.session_id;
         this.expiresAt = Date.now() + ev.expires_in * 1000;
+        this.checkProtocolVersion(ev.protocol_version);
         break;
       case "status":
         this.dom.statusLine.hidden = false;
@@ -403,9 +432,10 @@ export class WolkeWidget {
           this.entries = [];
           this.pending = null;
         }
-        this.showError(ev.message, ev.recoverable ?? false);
+        this.showError(ev.message, ev.recoverable ?? false, ev.retry_after);
         break;
       case "done":
+        this.turnComplete = true;
         this.onDone(ev.status, ev.expires_in);
         break;
       default:
@@ -604,26 +634,48 @@ export class WolkeWidget {
   }
 
   // --- errors + retry ---
-  private showError(message: string, recoverable: boolean): void {
+  private showError(message: string, recoverable: boolean, retryAfter?: number): void {
+    this.clearRetryTimer();
     this.dom.errorText.textContent = message;
     this.dom.retryBtn.hidden = !recoverable;
     this.dom.errorBanner.hidden = false;
+    // Honor retry_after (429): keep the retry button disabled for the back-off window
+    // so the user can't hammer the rate limiter. It re-enables when the window passes.
+    if (recoverable && retryAfter && retryAfter > 0) {
+      this.dom.retryBtn.disabled = true;
+      this.retryTimer = setTimeout(() => {
+        this.dom.retryBtn.disabled = false;
+        this.retryTimer = null;
+      }, retryAfter * 1000);
+    } else {
+      this.dom.retryBtn.disabled = false;
+    }
     this.announcer.status(message);
     this.disableSendWhileStreaming(false);
   }
 
+  private clearRetryTimer(): void {
+    if (this.retryTimer !== null) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+    this.dom.retryBtn.disabled = false;
+  }
+
   private hideError(): void {
     this.dom.errorBanner.hidden = true;
+    this.clearRetryTimer();
   }
 
   private retry(): void {
-    if (!this.lastRequest || this.streaming) return;
+    if (!this.lastRequest || this.streaming || this.dom.retryBtn.disabled) return;
     this.hideError();
     void this.runTurn(this.lastRequest);
   }
 
   dispose(): void {
     this.cancelStream();
+    this.clearRetryTimer();
     this.announcer.dispose();
     this.releaseTrap?.();
     this.unwatchScheme?.();

@@ -41,8 +41,10 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - gateway
-      - widget
+      gateway:
+        condition: service_healthy   # gateway has a healthcheck; wait for it (no 502s on boot)
+      widget:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

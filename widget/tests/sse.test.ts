@@ -63,6 +63,26 @@ describe("splitFrames", () => {
   });
 });
 
+describe("multi-line data (SSE spec)", () => {
+  it("joins multiple data: lines with newline and strips one leading space", async () => {
+    // a payload folded across two data: lines must reassemble to valid JSON
+    const c = collect();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        streamResponse([
+          'event: text\ndata: {"type":"text","seq":0,"message_id":"m1",\ndata: "delta":"a\\nb"}\n\n',
+          'event: done\ndata: {"type":"done","seq":1,"status":"complete","session_id":"s"}\n\n',
+        ]),
+      ),
+    );
+    await streamChat("/chat", { message: "x" }, {}, c.handlers);
+    expect(c.events.map((e) => e.type)).toEqual(["text", "done"]);
+    const text = c.events[0] as Extract<ServerEvent, { type: "text" }>;
+    expect(text.delta).toBe("a\nb");
+  });
+});
+
 describe("streamChat", () => {
   it("parses a full stream, ignoring heartbeat comments", async () => {
     const c = collect();
