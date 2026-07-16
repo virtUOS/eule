@@ -63,6 +63,35 @@ async def test_t8_1_ttl_eviction_over_wire(client, fake_clock):
     assert new_sid != sid
 
 
+# --- T8.4 — a session is bound to the bot that minted it -------------------
+
+async def test_t8_4_session_not_transferable_across_bots(registry, sessions):
+    """All bots share one checkpointer keyed by session_id: without the bot check, a
+    session minted on bot A would resume A's checkpoint (messages, scratch, pending
+    interrupt) inside bot B's graph — crossing scope boundaries structurally."""
+    from app.runtime.runner import TurnRequest, run_turn
+
+    foreign = sessions.new("campus-search", ttl_s=60)  # minted by another bot
+
+    class _NoGraph:
+        def get(self, bot_id):  # pragma: no cover - reaching this IS the failure
+            raise AssertionError("bot B's graph must never run on bot A's session")
+
+    events = [
+        ev
+        async for ev in run_turn(
+            registry, sessions, _NoGraph(), "echo",
+            TurnRequest(session_id=foreign.session_id, message="hi"),
+        )
+    ]
+    codes = [e.get("code") for e in events]
+    assert "session_not_found" in codes
+    assert events[-1]["type"] == "done" and events[-1]["status"] == "error"
+    # a fresh session was minted so the widget can start over cleanly
+    assert events[0]["type"] == "session"
+    assert events[0]["session_id"] != foreign.session_id
+
+
 # --- T8.2 — restart drops sessions → session_not_found handled -------------
 
 async def test_t8_2_restart_drops_sessions(registry):

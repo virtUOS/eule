@@ -96,7 +96,9 @@ class _CaptureGraph:
         self.inputs: list[Any] = []
         self.configs: list[dict[str, Any]] = []
 
-    async def astream(self, graph_input: Any, config: dict[str, Any], stream_mode: Any):
+    async def astream(
+        self, graph_input: Any, config: dict[str, Any], stream_mode: Any, subgraphs: bool = False
+    ):
         self.inputs.append(graph_input)
         self.configs.append(config)
         if False:  # pragma: no cover — make this an async generator

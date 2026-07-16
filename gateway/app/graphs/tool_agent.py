@@ -225,7 +225,16 @@ def build_tool_agent_fragment(
             ]
             if sources and full.id:
                 emit_sources(full.id, sources)
-            return {"messages": [full]}
+            # End of turn: clear the ta_* working set. Without this, a resume-driven
+            # next turn (the router's handoff — scratch is NOT reset on resumes) would
+            # carry this turn's results into the next prompt as "retrieved for THIS
+            # question", misattribute citations, exhaust the round budget — and under
+            # a router with several tool-agent targets, leak one sub-bot's tool
+            # results into another's prompt (they share the scratch channel).
+            scratch_out = {
+                k: v for k, v in scratch.items() if k not in ("ta_results", "ta_rounds", "ta_pending")
+            }
+            return {"messages": [full], "scratch": scratch_out}
 
         def after_agent(state: BotState) -> str:
             return "tools" if state.get("scratch", {}).get("ta_pending") else "generate"

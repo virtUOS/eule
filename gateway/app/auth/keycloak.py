@@ -41,6 +41,18 @@ class AuthError(Exception):
     def forbidden(cls, message: str = "You do not have the required role.") -> "AuthError":
         return cls("forbidden", message, status=403, recoverable=False)
 
+    @classmethod
+    def auth_unavailable(cls) -> "AuthError":
+        # An IdP outage is not the caller's fault: 503 + recoverable, so the host
+        # retries with the SAME token instead of discarding a valid one as if it
+        # were rejected. Code stays within the docs/01 vocabulary.
+        return cls(
+            "internal_error",
+            "Authentication is temporarily unavailable. Please try again.",
+            status=503,
+            recoverable=True,
+        )
+
 
 class KeyResolver(Protocol):
     def __call__(self, token: str) -> Any: ...
@@ -76,8 +88,13 @@ class AuthVerifier:
             key = self._resolve_key(token)
         except AuthError:
             raise
-        except Exception as e:  # JWKS lookup / bad token header
-            raise AuthError.unauthorized(f"Token key resolution failed: {e}") from e
+        except jwt.exceptions.PyJWKClientConnectionError as e:
+            # JWKS unreachable = IdP outage, NOT a bad token. Detail stays server-side
+            # (chained cause); the body must not leak the JWKS URL or network errors.
+            raise AuthError.auth_unavailable() from e
+        except Exception as e:  # bad token header / unknown kid / malformed JWT
+            # Generic 401 — never echo exception detail to the client.
+            raise AuthError.unauthorized() from e
 
         try:
             claims = jwt.decode(

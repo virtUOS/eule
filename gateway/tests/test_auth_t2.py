@@ -215,3 +215,49 @@ async def test_t2_5_expiry_between_interrupt_and_resume(sessions):
             headers={"authorization": f"Bearer {fresh}"},
         )
         assert ev2[-1]["data"]["status"] == "complete"
+
+
+# --- T2.x — key-resolution failures: no internal detail leaks; IdP outage ≠ bad token
+
+def _identity_cfg():
+    from app.registry.models import IdentityCfg
+
+    return IdentityCfg(subject_claim="sub", required_roles=[])
+
+
+def test_t2_key_resolution_failure_is_generic_401():
+    """A bad/foreign token (unknown kid, malformed header) → generic 401. The body
+    must never echo exception detail (JWKS URL, DNS errors)."""
+    from app.auth.keycloak import AuthError
+
+    def raiser(_token: str):
+        raise ValueError("SECRET-DETAIL https://sso.internal/jwks dns failure")
+
+    verifier = AuthVerifier(AuthCfg(**AUTH), key_resolver=raiser)
+    try:
+        verifier.verify(make_token(), _identity_cfg())
+        raise AssertionError("expected AuthError")
+    except AuthError as e:
+        assert e.status == 401 and e.code == "unauthorized"
+        assert "SECRET-DETAIL" not in e.message
+        assert "sso.internal" not in e.message
+
+
+def test_t2_jwks_outage_is_503_recoverable_not_bad_token():
+    """JWKS unreachable = IdP outage: 503 + recoverable so the host retries with the
+    SAME token, instead of a 401 that makes clients discard a valid token."""
+    import jwt as pyjwt
+
+    from app.auth.keycloak import AuthError
+
+    def raiser(_token: str):
+        raise pyjwt.exceptions.PyJWKClientConnectionError("connection refused to sso.internal")
+
+    verifier = AuthVerifier(AuthCfg(**AUTH), key_resolver=raiser)
+    try:
+        verifier.verify(make_token(), _identity_cfg())
+        raise AssertionError("expected AuthError")
+    except AuthError as e:
+        assert e.status == 503 and e.code == "internal_error"
+        assert e.recoverable is True
+        assert "sso.internal" not in e.message

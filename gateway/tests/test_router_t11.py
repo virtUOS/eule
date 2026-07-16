@@ -211,6 +211,67 @@ async def test_t11_6_sub_bot_allowlist_unchanged_via_router(sessions):
     assert _text(events) == "No can do."
 
 
+async def test_tool_agent_scratch_cleared_between_routed_turns(sessions):
+    """Regression (review batch 1): under the router every turn is a resume, so
+    scratch is never reset by the runner. The tool-agent must clear its ta_* working
+    set at turn end — otherwise turn 2's prompt and CITATIONS include turn 1's
+    results ("retrieved for THIS question"), and the round budget is exhausted."""
+    import itertools as it
+
+    from mcp.server.fastmcp import FastMCP
+
+    from .test_tool_agent import _ScriptedPicker, _bot as _kb_bot_cfg, _client, _tool_call_msg
+
+    counter = it.count(1)
+    server = FastMCP("kb")
+
+    @server.tool()
+    async def search_kb(query: str) -> dict:
+        """Search (distinct result per call, so turns are distinguishable)."""
+        n = next(counter)
+        return {"results": [{"title": f"Result {n}", "url": f"https://kb.example/{n}"}]}
+
+    kb_cfg = _kb_bot_cfg()
+    picker = _ScriptedPicker(
+        responses=[
+            _tool_call_msg("search_kb", {"query": "one"}),
+            _tool_call_msg("search_kb", {"query": "two"}),
+        ]
+    )
+    answerer = GenericFakeChatModel(messages=itertools.cycle([AIMessage(content="Answer.")]))
+    kb_fragment = build_tool_agent_fragment(
+        kb_cfg, Registry(make_global(), {}),
+        mcp_clients=[_client(server)], agent_model=picker, answer_model=answerer,
+    )
+
+    cfg = _router_cfg([{"bot": "kb-bot", "label": "KB"}])
+    app = _app(cfg, {"kb-bot": kb_fragment}, sessions)
+
+    events, _ = await _drive(app, {"greeting": True})
+    sid = events[0]["data"]["session_id"]
+    [menu] = _quick_replies(events)
+    events, _ = await _drive(app, {"session_id": sid, "choice": {"id": "kb-bot"}, "reply_to": menu["reply_to"]})
+    [handoff] = _quick_replies(events)
+
+    # turn 1
+    events, _ = await _drive(
+        app, {"session_id": sid, "choice": {"id": None, "text": "question one"}, "reply_to": handoff["reply_to"]}
+    )
+    [sources1] = [e["data"] for e in events if e["data"]["type"] == "sources"]
+    assert [s["title"] for s in sources1["sources"]] == ["Result 1"]
+    # custom events from INSIDE the routed subgraph reach the wire (runner streams
+    # with subgraphs=True — regression: they were silently dropped before)
+    assert any(e["data"]["type"] == "status" and e["data"]["state"] == "tool_call" for e in events)
+    [handoff2] = _quick_replies(events)
+
+    # turn 2: citations must contain ONLY this turn's result — no carry-over
+    events, _ = await _drive(
+        app, {"session_id": sid, "choice": {"id": None, "text": "question two"}, "reply_to": handoff2["reply_to"]}
+    )
+    [sources2] = [e["data"] for e in events if e["data"]["type"] == "sources"]
+    assert [s["title"] for s in sources2["sources"]] == ["Result 2"]
+
+
 # --- 9c validation rules -----------------------------------------------------
 
 def test_router_requires_routes_and_routes_require_router():

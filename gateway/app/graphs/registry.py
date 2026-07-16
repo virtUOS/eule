@@ -59,6 +59,16 @@ FRAGMENT_PARAM_MODELS: dict[str, type[BaseModel]] = {
     "router": RouterParams,
 }
 
+# The two registries MUST cover the same graphs: a fragment registered without a
+# params model would make check 14 silently skip it — graph_params on that bot would
+# be ignored, which is exactly the failure mode check 14 exists to prevent. Fail at
+# import (= at boot), per golden rule 4.
+if FRAGMENT_BUILDERS.keys() != FRAGMENT_PARAM_MODELS.keys():
+    raise RuntimeError(
+        "FRAGMENT_BUILDERS and FRAGMENT_PARAM_MODELS must register the same graphs; "
+        f"mismatch: {sorted(FRAGMENT_BUILDERS.keys() ^ FRAGMENT_PARAM_MODELS.keys())}"
+    )
+
 
 def known_graphs() -> list[str]:
     return list(FRAGMENT_BUILDERS)

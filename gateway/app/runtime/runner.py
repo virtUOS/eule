@@ -65,9 +65,13 @@ async def run_turn(
         session.subject = req.identity.subject  # stamp owner (None for public bots)
     else:
         found = sessions.get(req.session_id)
-        # A session may only be continued by the subject that created it. A mismatch is
+        # A session may only be continued by the subject that created it, AND only on
+        # the bot that created it — all bots share one checkpointer keyed by session_id,
+        # so without the bot check a session id minted on bot A would resume A's
+        # checkpoint (messages, scratch, pending interrupt) inside bot B's graph,
+        # crossing scope boundaries structurally (golden rule 3). Either mismatch is
         # treated as not-found (fail-safe, no info leak that the session exists).
-        if found is not None and found.subject != req.identity.subject:
+        if found is not None and (found.subject != req.identity.subject or found.bot_id != bot_id):
             found = None
         if found is None:
             # Unknown/expired session → mint a fresh one, then fail this turn so the
@@ -140,11 +144,21 @@ async def run_turn(
 
     pending: Any = None
     try:
-        async for mode, data in graph.astream(
-            graph_input, config=config, stream_mode=["messages", "custom", "updates"]
+        # subgraphs=True: WITHOUT it, `custom` events (status/sources via
+        # get_stream_writer) emitted inside a routed sub-bot's subgraph are silently
+        # dropped — only top-level nodes' events surface. With it, each item is a
+        # (namespace, mode, data) triple; the namespace is irrelevant to translation.
+        async for _ns, mode, data in graph.astream(
+            graph_input, config=config,
+            stream_mode=["messages", "custom", "updates"],
+            subgraphs=True,
         ):
             if mode == "updates" and isinstance(data, dict) and "__interrupt__" in data:
-                pending = data["__interrupt__"][0]
+                # A subgraph interrupt can surface once per namespace level; the
+                # payload is the same interrupt — keep the first (one pending per
+                # session, docs/01).
+                if pending is None:
+                    pending = data["__interrupt__"][0]
                 continue
             for ev in translate(mode, data, emitter, msg_ids):
                 yield ev

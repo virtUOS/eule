@@ -79,6 +79,14 @@ def test_passthrough_takes_no_params():
     assert c14([make_bot(graph="passthrough", graph_params={"anything": 1})])
 
 
+def test_fragment_registries_cover_same_graphs():
+    """A fragment registered without a params model would make check 14 silently skip
+    it. The module fails at import on divergence; this pins the invariant."""
+    from app.graphs.registry import FRAGMENT_BUILDERS, FRAGMENT_PARAM_MODELS
+
+    assert FRAGMENT_BUILDERS.keys() == FRAGMENT_PARAM_MODELS.keys()
+
+
 def test_unknown_graph_reports_check13_not_14():
     bad = make_bot(graph="ghost", graph_params={"x": 1})
     all_errors = errs([bad])
