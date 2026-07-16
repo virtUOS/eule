@@ -60,15 +60,19 @@ def allowed_tool_names(cfg: BotCfg) -> list[str]:
 
 
 async def mcp_call(
-    ctx: RuntimeContext, client: McpClient, tool_name: str, **model_args: Any
+    ctx: RuntimeContext, client: McpClient, tool_name: str, arguments: dict[str, Any]
 ) -> McpResult:
     """The ONE wrapper for every MCP call. Identity comes from ctx (→ `_meta`), never
-    the model; the model's `model_args` become the tool `arguments` verbatim. Even if the
-    model smuggles a `subject`/`_identity` key, it lands in `arguments`, which the server
-    ignores for authz — the server trusts only `_meta`."""
+    the model; `arguments` (model-authored) become the tool `arguments` verbatim. Even
+    if the model smuggles a `subject`/`_identity` key, it lands in `arguments`, which
+    the server ignores for authz — the server trusts only `_meta`.
+
+    `arguments` is a plain dict, NOT **kwargs: a model-authored arg named `ctx`,
+    `client`, or `tool_name` would otherwise collide with these positionals and turn
+    the turn into an internal_error, and a real tool could never declare such a param."""
     return await client.call(
         tool_name,
-        arguments=dict(model_args),
+        arguments=dict(arguments),
         identity={"subject": ctx.identity.subject, "claims": ctx.identity.claims},
     )
 
@@ -82,10 +86,17 @@ def build_mcp_tool(
     client: McpClient,
 ) -> BaseTool:
     """Bind one MCP tool for the model. The model-visible schema is EXACTLY the tool's
-    declared `input_schema` (JSON Schema) — it contains no identity field."""
+    declared `input_schema` (JSON Schema) — it contains no identity field.
+
+    HAZARD: this closes over `ctx` (per-request identity). It must be called PER
+    REQUEST, never captured in a compiled/cached graph (which is shared across users).
+    No current fragment uses it — the stock `tool-agent` builds tool defs inline and
+    calls via `mcp_call` — but it and `build_tools` remain as the reference binding +
+    the T3.2/T4.1 security tests. If you wire it into a graph, resolve `ctx` from
+    `config["configurable"]` inside the node, not from a build-time closure."""
 
     async def _run(**model_args: Any) -> Any:
-        result = await mcp_call(ctx, client, name, **model_args)
+        result = await mcp_call(ctx, client, name, model_args)
         # Prefer structured output; fall back to text. Tool output is UNTRUSTED content.
         return result.structured if result.structured is not None else result.text
 

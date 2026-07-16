@@ -74,3 +74,43 @@ def test_build_bot_graph_requires_guard_model_when_enabled():
         assert False, "expected ValueError"
     except ValueError as e:
         assert "guard_model" in str(e)
+
+
+# --- Batch 5a: leading-token match + latest-message-only --------------------
+
+async def test_trailing_punctuation_still_declines(sessions):
+    cfg = make_bot(id="echo", guard={"enabled": True, "provider": "default"})
+    events, _ = await _run(cfg, _fake_guard("out_of_scope.\n"), sessions, "weather?")
+    text = "".join(e["data"]["delta"] for e in events if e["data"]["type"] == "text")
+    assert "outside what I can help with" in text
+
+
+async def test_non_conforming_output_fails_open_in_scope(sessions):
+    # "out of scope" (spaces, not the token) → leading token "out" → in_scope. Guard
+    # is defense-in-depth (golden rule 3); failing open is the documented direction.
+    cfg = make_bot(id="echo", guard={"enabled": True, "provider": "default"})
+    events, _ = await _run(cfg, _fake_guard("out of scope"), sessions, "hello")
+    text = "".join(e["data"]["delta"] for e in events if e["data"]["type"] == "text")
+    assert text == "You said: hello"  # reached the fragment, not decline
+
+
+async def test_guard_classifies_only_latest_message(sessions):
+    """The classifier is invoked with exactly [system, latest HumanMessage] — not the
+    whole history — so it can't be steered by earlier turns. We assert the model saw a
+    single human message."""
+    seen: list[int] = []
+
+    class _Spy(GenericFakeChatModel):
+        async def _astream(self, messages, stop=None, run_manager=None, **kwargs):  # type: ignore[override]
+            # [system, latest] → 2 messages total
+            seen.append(len(messages))
+            async for c in super()._astream(messages, stop=stop, run_manager=run_manager, **kwargs):
+                yield c
+
+        async def ainvoke(self, input, config=None, **kwargs):  # type: ignore[override]
+            seen.append(len(input))
+            return AIMessage(content="in_scope")
+
+    cfg = make_bot(id="echo", guard={"enabled": True, "provider": "default"})
+    await _run(cfg, _Spy(messages=iter([AIMessage(content="in_scope")])), sessions, "just one")
+    assert seen and seen[0] == 2  # system + the single latest human message

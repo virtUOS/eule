@@ -95,7 +95,7 @@ async def test_mcp_call_wrapper_routes_ctx_identity_to_the_server():
         session_id="s", request_id="r", locale="en",
     )
     client = _client(_server())
-    result = await mcp_call(ctx, client, "search", query="hi", subject="attacker")
+    result = await mcp_call(ctx, client, "search", {"query": "hi", "subject": "attacker"})
     # server saw the TRUSTED identity via _meta, not the smuggled "attacker"
     assert _payload(result)["identity_seen"] == {"subject": "real-user", "claims": {"sub": "real-user"}}
 

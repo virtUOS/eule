@@ -78,6 +78,24 @@ def _context_error(context: dict[str, Any] | None) -> str | None:
     return None
 
 
+_CHOICE_ID_MAX = 256  # a choice id echoes an option id — bounded; free text is `text`
+
+
+def _choice_error(choice: dict[str, Any] | None) -> str | None:
+    """Bound/typecheck a resume choice before it becomes graph state (a 10 MB `id`
+    or a nested-object `id` would otherwise land in the checkpoint). `text` length is
+    enforced later against the per-bot char limit."""
+    if choice is None:
+        return None
+    cid = choice.get("id")
+    if cid is not None and (not isinstance(cid, str) or len(cid) > _CHOICE_ID_MAX):
+        return "choice.id must be a string id or null."
+    text = choice.get("text")
+    if text is not None and not isinstance(text, str):
+        return "choice.text must be a string."
+    return None
+
+
 def _error_response(
     status: int,
     code: str,
@@ -171,10 +189,24 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
             headers=cors,
         )
 
+    # A resume is `choice` + `reply_to` (docs/01 §Request). `reply_to` without `choice`
+    # is malformed — and would otherwise be treated as a resume that silently discards
+    # an accompanying `message`.
+    if body.reply_to is not None and body.choice is None:
+        return _error_response(
+            400, "invalid_request", "reply_to is only valid together with a choice.",
+            headers=cors,
+        )
+
     # Context passthrough (docs/01 §Context): strict allowlist, pre-stream.
     ctx_err = _context_error(body.context)
     if ctx_err is not None:
         return _error_response(400, "invalid_request", ctx_err, headers=cors)
+
+    # Resume choice shape (bounded before it becomes graph state).
+    choice_err = _choice_error(body.choice)
+    if choice_err is not None:
+        return _error_response(400, "invalid_request", choice_err, headers=cors)
 
     # Enforce the per-bot char limit on any free text the user can type — a plain
     # message OR a free-text reply to a quick-reply interrupt (choice.text).

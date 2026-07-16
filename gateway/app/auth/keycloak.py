@@ -106,6 +106,7 @@ class AuthVerifier:
                 audience=self._cfg.audience,
                 issuer=self._cfg.issuer,
                 leeway=self._cfg.leeway_s,
+                options={"require": ["exp", "iss", "aud"]},  # a token without exp must not verify forever
             )
         except jwt.ExpiredSignatureError as e:
             raise AuthError.token_expired() from e

@@ -29,14 +29,14 @@ routers are rejected (check 10). Prompts are localized via `graph_params`
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Hashable
 
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import START
 from pydantic import BaseModel, ConfigDict, Field
 
-from .emit import ask_quick_replies, resolve_choice
+from .emit import ask_quick_replies
 from .skeleton import BotGraphBuilder, BotState, GraphFragment
 
 if TYPE_CHECKING:
@@ -111,8 +111,19 @@ def build_router_fragment(
                 [{"id": t.bot, "label": t.label} for t in targets],
                 allow_free_text=False,  # v1: menu only; classifier routing is v2
             )
-            route = resolve_choice(reply, valid_ids=valid)
-            return {"scratch": {**state.get("scratch", {}), "route": route}}
+            # A malformed/free-text reply to the menu (id not a target) must NOT crash
+            # the turn (resolve_choice would raise → internal_error). Leave `route`
+            # unset; after_menu re-shows the menu.
+            route = reply.get("id") if isinstance(reply, dict) else None
+            scratch = dict(state.get("scratch", {}))
+            if route in valid:
+                scratch["route"] = route
+            else:
+                scratch.pop("route", None)
+            return {"scratch": scratch}
+
+        def after_menu(state: BotState) -> str:
+            return "handoff" if state.get("scratch", {}).get("route") in valid else "menu"
 
         async def handoff(state: BotState, config: RunnableConfig) -> dict[str, Any]:
             ctx = config["configurable"]["ctx"]
@@ -123,36 +134,43 @@ def build_router_fragment(
             )
             scratch = dict(state.get("scratch", {}))
             choice_id = reply.get("id") if isinstance(reply, dict) else None
-            text = reply.get("text") if isinstance(reply, dict) else None
-            if choice_id == MENU_CHOICE or not text:
-                # escape (or malformed reply): drop stickiness, fall back to the menu
-                scratch.pop("route", None)
+            text = (reply.get("text") if isinstance(reply, dict) else None) or ""
+            if choice_id == MENU_CHOICE:
+                scratch.pop("route", None)  # escape → back to the menu
+                scratch["handoff_intent"] = "menu"
+                return {"scratch": scratch}
+            if not text.strip():
+                # empty/whitespace question, no escape → re-ask, keep the route sticky
+                scratch["handoff_intent"] = "reask"
                 return {"scratch": scratch}
             # free-text question: a resume carries no HumanMessage (docs/04 §5) —
             # append it here so the routed sub-bot sees what was asked.
-            return {"messages": [HumanMessage(content=str(text))], "scratch": scratch}
+            scratch["handoff_intent"] = "route"
+            return {"messages": [HumanMessage(content=text)], "scratch": scratch}
 
         def after_handoff(state: BotState) -> str:
-            route = state.get("scratch", {}).get("route")
-            messages = state.get("messages", [])
-            if route in valid and messages and isinstance(messages[-1], HumanMessage):
+            scratch = state.get("scratch", {})
+            intent = scratch.get("handoff_intent")
+            route = scratch.get("route")
+            if intent == "route" and route in valid:
                 return node_name[route]
+            if intent == "reask":
+                return "handoff"
             return "menu"
 
         b.add_node("menu", menu)
         b.add_node("handoff", handoff)
         b.set_entry_after_guard("menu")
-        b.add_edge("menu", "handoff")  # after a choice, ask for the question
+        b.add_conditional_edges("menu", after_menu, {"menu": "menu", "handoff": "handoff"})
 
+        handoff_targets: dict[Hashable, str] = {
+            "menu": "menu", "handoff": "handoff", **{n: n for n in node_name.values()}
+        }
         for target_bot, fragment in subgraph_fragments.items():
             b.add_node(node_name[target_bot], _compile_subgraph(fragment))
             # after a routed answer, back to handoff: next question or the escape
             b.add_edge(node_name[target_bot], "handoff")
 
-        b.add_conditional_edges(
-            "handoff",
-            after_handoff,
-            {"menu": "menu", **{n: n for n in node_name.values()}},
-        )
+        b.add_conditional_edges("handoff", after_handoff, handoff_targets)
 
     return GraphFragment(flow)

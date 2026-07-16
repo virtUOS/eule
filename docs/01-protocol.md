@@ -163,6 +163,7 @@ terminal `done: error`.
 | `rate_limited` | 429 | true | Includes `retry_after`. |
 | `no_pending_interrupt` | in-stream | false | choice with nothing to resume. |
 | `session_not_found` | in-stream | false | Unknown/expired session; start fresh. |
+| `session_busy` | in-stream | true | A turn is already streaming on this session; retry after it finishes. |
 | `tool_unavailable` | in-stream | true | MCP/backend failure. |
 | `model_error` | in-stream | true | Upstream model timeout/error. |
 | `internal_error` | in-stream | false | Catch-all. |

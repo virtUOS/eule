@@ -4,7 +4,7 @@ protocol event dicts; SSE framing + heartbeat are applied by the endpoint."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Iterator
 from uuid import uuid4
 
 from langchain_core.messages import HumanMessage
@@ -47,6 +47,18 @@ def _normalized_resume(req: TurnRequest) -> dict[str, Any]:
     return {"kind": "choice", "id": choice.get("id"), "text": choice.get("text")}
 
 
+def _fail(
+    emitter: EventEmitter, sessions: Sessions, session: Session, code: str, message: str,
+    *, recoverable: bool = False,
+) -> Iterator[dict[str, Any]]:
+    """The error + terminal-done epilogue, emitted on every early-exit path."""
+    yield emitter.make("error", code=code, message=message, recoverable=recoverable)
+    yield emitter.make(
+        "done", status="error", session_id=session.session_id,
+        expires_in=sessions.expires_in(session),
+    )
+
+
 async def run_turn(
     registry: Registry,
     sessions: Sessions,
@@ -84,16 +96,11 @@ async def run_turn(
                 bot_id=bot_id,
                 expires_in=sessions.expires_in(fresh),
             )
-            yield emitter.make(
-                "error",
-                code="session_not_found",
-                message="Your session expired. Starting a new conversation.",
-                recoverable=False,
-            )
-            yield emitter.make(
-                "done", status="error", session_id=fresh.session_id,
-                expires_in=sessions.expires_in(fresh),
-            )
+            for ev in _fail(
+                emitter, sessions, fresh, "session_not_found",
+                "Your session expired. Starting a new conversation.",
+            ):
+                yield ev
             return
         session = found
 
@@ -105,33 +112,59 @@ async def run_turn(
         expires_in=sessions.expires_in(session),
     )
 
-    is_resume = req.choice is not None or req.reply_to is not None
+    # One turn at a time per session. Concurrent turns would interleave checkpoint
+    # writes on the same thread_id and race the pending-interrupt state. The
+    # check-and-set is atomic (single event loop, no await between them).
+    if session.busy:
+        for ev in _fail(
+            emitter, sessions, session, "session_busy",
+            "This conversation is already processing a message. Please wait.",
+            recoverable=True,
+        ):
+            yield ev
+        return
+    session.busy = True
+    try:
+        is_resume = req.choice is not None or req.reply_to is not None
 
-    if is_resume:
-        if session.pending_reply_to is None or session.pending_reply_to != req.reply_to:
-            yield emitter.make(
-                "error",
-                code="no_pending_interrupt",
-                message="There is nothing to resume; please start a new message.",
-                recoverable=False,
-            )
-            yield emitter.make(
-                "done", status="error", session_id=session.session_id,
-                expires_in=sessions.expires_in(session),
-            )
-            return
-        graph_input: Any = Command(resume=_normalized_resume(req))
-        session.pending_reply_to = None
-        session.pending_interrupt = None
-    else:
-        # A fresh message abandons any prior interrupt: clear the pending state so a
-        # stale/replayed reply_to can no longer resume it (docs/01 §Reconnection —
-        # "fails safe, no double execution"). Without this, a desynced client (e.g.
-        # after a reload) could later resume an interrupt the user already walked away from.
-        session.pending_reply_to = None
-        session.pending_interrupt = None
-        graph_input = _initial_state(req)
+        if is_resume:
+            if session.pending_reply_to is None or session.pending_reply_to != req.reply_to:
+                for ev in _fail(
+                    emitter, sessions, session, "no_pending_interrupt",
+                    "There is nothing to resume; please start a new message.",
+                ):
+                    yield ev
+                return
+            graph_input: Any = Command(resume=_normalized_resume(req))
+            session.pending_reply_to = None
+        else:
+            # A fresh message abandons any prior interrupt: clear pending so a stale/
+            # replayed reply_to can no longer resume it (docs/01 §Reconnection — "fails
+            # safe, no double execution"). Without this, a desynced client (e.g. after a
+            # reload) could resume an interrupt the user already walked away from.
+            session.pending_reply_to = None
+            graph_input = _initial_state(req)
 
+        async for ev in _run_graph(
+            registry, sessions, graphs, bot_id, cfg, session, req, emitter, msg_ids, graph_input
+        ):
+            yield ev
+    finally:
+        session.busy = False
+
+
+async def _run_graph(  # noqa: PLR0913 — threads the resolved turn state into the graph loop
+    registry: Registry,
+    sessions: Sessions,
+    graphs: Any,
+    bot_id: str,
+    cfg: Any,
+    session: Session,
+    req: TurnRequest,
+    emitter: EventEmitter,
+    msg_ids: MessageIds,
+    graph_input: Any,
+) -> AsyncIterator[dict[str, Any]]:
     ctx = build_runtime_context(
         cfg,
         session_id=session.session_id,
@@ -163,14 +196,11 @@ async def run_turn(
             for ev in translate(mode, data, emitter, msg_ids):
                 yield ev
     except Exception:  # noqa: BLE001 — surface as protocol error, never leak a stack
-        yield emitter.make(
-            "error", code="internal_error",
-            message="Something went wrong. Please try again.", recoverable=False,
-        )
-        yield emitter.make(
-            "done", status="error", session_id=session.session_id,
-            expires_in=sessions.expires_in(session),
-        )
+        for ev in _fail(
+            emitter, sessions, session, "internal_error",
+            "Something went wrong. Please try again.",
+        ):
+            yield ev
         return
 
     sessions.touch(session, cfg.session_ttl_s)
@@ -179,7 +209,6 @@ async def run_turn(
         reply_to = f"evt_{uuid4().hex[:8]}"
         value = dict(pending.value)
         session.pending_reply_to = reply_to
-        session.pending_interrupt = value
         yield emitter.make(
             "quick_replies",
             reply_to=reply_to,

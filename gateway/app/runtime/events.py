@@ -88,7 +88,11 @@ def translate(
 
 def format_sse(event: dict[str, Any]) -> str:
     payload = json.dumps(event, separators=(",", ":"), ensure_ascii=False)
-    return f"event: {event['type']}\ndata: {payload}\n\n"
+    # Strip CR/LF from the `event:` field: a newline there would inject extra SSE
+    # frame lines. Event types are code-authored today (trusted), but this is a cheap
+    # guard against a future dynamically-typed event. `data:` is JSON-escaped already.
+    event_type = str(event["type"]).replace("\r", "").replace("\n", "")
+    return f"event: {event_type}\ndata: {payload}\n\n"
 
 
 async def with_heartbeat(
@@ -116,5 +120,7 @@ async def with_heartbeat(
             yield item
             pending = asyncio.ensure_future(it.__anext__())
     finally:
-        if not pending.done():
-            pending.cancel()
+        # Await the cancelled task so its teardown (and the source generator's) runs
+        # now, rather than being deferred to GC ("Task was destroyed" warnings).
+        pending.cancel()
+        await asyncio.gather(pending, return_exceptions=True)

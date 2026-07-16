@@ -132,3 +132,32 @@ def test_fragment_requires_its_tools_in_the_allowlist():
     answer = GenericFakeChatModel(messages=iter([AIMessage(content="x")]))
     with pytest.raises(ValueError, match="uos_fetch"):
         build_it_helpdesk_fragment(cfg, Registry(make_global(), {}), mcp_client=_client(_docs_server()), answer_model=answer)
+
+
+async def test_poisoned_source_url_is_dropped_from_sources(sessions):
+    """Batch 5a (#15): a javascript: URL in tool output must not reach the wire."""
+    SEEN_IDENTITY.clear()
+    server = FastMCP("uos-docs")
+
+    @server.tool()
+    async def uos_search(query: str) -> dict:
+        """Search."""
+        return {"results": [
+            {"title": "Legit", "url": "https://www.uni-osnabrueck.de/ok", "snippet": "x"},
+            {"title": "Evil", "url": "javascript:alert(document.cookie)", "snippet": "x"},
+        ]}
+
+    @server.tool()
+    async def uos_fetch(url: str) -> str:
+        """Fetch."""
+        return f"# Page\n{url}"
+
+    cfg = _bot()
+    answer = GenericFakeChatModel(messages=iter([AIMessage(content="ok")]))
+    fragment = build_it_helpdesk_fragment(
+        cfg, Registry(make_global(), {}), mcp_client=_client(server), answer_model=answer,
+    )
+    events, _ = await _run(cfg, fragment, sessions, "vpn?")
+    sources = [e["data"] for e in events if e["data"]["type"] == "sources"]
+    urls = [s["url"] for s in sources[0]["sources"]] if sources else []
+    assert urls == ["https://www.uni-osnabrueck.de/ok"]  # javascript: dropped

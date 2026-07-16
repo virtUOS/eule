@@ -12,18 +12,17 @@ result-parsing below match the Osnabrück docs server (`uos_search`, `uos_fetch`
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END
 
 from ..mcp.client import McpClient, McpResult, allowed_tool_names, mcp_call
 from ..mcp.transport import client_for
 from ..registry.models import BotCfg
+from ._shared import coerce_results, last_user_text, safe_http_url, source_items
 from .emit import emit_sources, emit_status
 from .model import astream_message, build_chat_model
 from .skeleton import BotGraphBuilder, BotState, GraphFragment
@@ -43,36 +42,21 @@ _DEFAULT_SYSTEM = (
 )
 
 
-def _last_user_text(state: BotState) -> str:
-    for msg in reversed(state["messages"]):
-        if isinstance(msg, HumanMessage):
-            return str(msg.content)
-    return ""
-
-
-def _host(url: str) -> str:
-    net = urlparse(url).netloc
-    return net[4:] if net.startswith("www.") else net
-
-
 def _parse_results(result: McpResult) -> list[dict[str, str]]:
-    """uos_search → list of {title, url, snippet}. Tolerates structured output or a JSON
-    text body; a dict payload is unwrapped from a `results` key. Adapt to your server."""
-    payload: Any = result.structured
-    if payload is None and result.text:
-        try:
-            payload = json.loads(result.text)
-        except json.JSONDecodeError:
-            payload = None
-    if isinstance(payload, dict):
-        payload = payload.get("results", [])
-    if not isinstance(payload, list):
-        return []
+    """uos_search → list of {title, url, snippet}, http(s) URLs only. Tolerates
+    structured output or a JSON text body. Adapt to your server's shapes."""
     out: list[dict[str, str]] = []
-    for item in payload:
-        if isinstance(item, dict) and item.get("url"):
-            url = str(item["url"])
-            out.append({"title": str(item.get("title") or url), "url": url, "snippet": str(item.get("snippet") or "")})
+    for item in coerce_results(result.structured, result.text):
+        raw = item.get("url")
+        if not raw:
+            continue
+        out.append(
+            {
+                "title": str(item.get("title") or raw),
+                "url": str(raw),
+                "snippet": str(item.get("snippet") or ""),
+            }
+        )
     return out
 
 
@@ -119,18 +103,21 @@ def build_it_helpdesk_fragment(
     def flow(b: BotGraphBuilder) -> None:
         async def respond(state: BotState, config: RunnableConfig) -> dict[str, Any]:
             ctx = config["configurable"]["ctx"]
-            query = _last_user_text(state)
+            query = last_user_text(state)
 
             # 1) search the site
             emit_status("tool_call", "Searching the university website…", SEARCH_TOOL)
-            results = _parse_results(await mcp_call(ctx, client, SEARCH_TOOL, query=query))
+            results = _parse_results(await mcp_call(ctx, client, SEARCH_TOOL, {"query": query}))
 
-            # 2) fetch the top pages for answer context (bounded)
+            # 2) fetch the top http(s) pages for answer context (bounded)
             pages: list[str] = []
             for i, r in enumerate(results[:MAX_PAGES]):
+                url = safe_http_url(r["url"])
+                if url is None:
+                    continue
                 emit_status("tool_call", "Reading the most relevant pages…", FETCH_TOOL)
-                fetched = await mcp_call(ctx, client, FETCH_TOOL, url=r["url"])
-                pages.append(f"[{i + 1}] {r['title']} ({r['url']})\n{_page_text(fetched)[:MAX_PAGE_CHARS]}")
+                fetched = await mcp_call(ctx, client, FETCH_TOOL, {"url": url})
+                pages.append(f"[{i + 1}] {r['title']} ({url})\n{_page_text(fetched)[:MAX_PAGE_CHARS]}")
 
             # 3) answer from that content, streaming; then cite the search results.
             # Retrieved content is UNTRUSTED (golden rule 3) — framed as data, not
@@ -144,11 +131,7 @@ def build_it_helpdesk_fragment(
             prompt = [SystemMessage(system), *state["messages"], reference]
             full = await astream_message(model, prompt)
 
-            sources = [
-                {"title": r["title"], "source": _host(r["url"]), "url": r["url"]}
-                for r in results
-                if r.get("url")
-            ]
+            sources = source_items(results)
             if sources and full.id:
                 emit_sources(full.id, sources)
             return {"messages": [full]}

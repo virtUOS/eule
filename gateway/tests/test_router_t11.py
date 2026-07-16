@@ -272,6 +272,53 @@ async def test_tool_agent_scratch_cleared_between_routed_turns(sessions):
     assert [s["title"] for s in sources2["sources"]] == ["Result 2"]
 
 
+async def test_router_empty_text_reasks_keeps_route(sessions):
+    """Batch 5a: empty/whitespace text at the handoff (no escape) re-asks and keeps
+    the route sticky — it does NOT silently bounce to the menu."""
+    cfg = _router_cfg([{"bot": "bot-a", "label": "Bot A"}])
+    app = _app(cfg, {"bot-a": _canned_bot("Answer from A.")}, sessions)
+
+    events, _ = await _drive(app, {"greeting": True})
+    sid = events[0]["data"]["session_id"]
+    [menu] = _quick_replies(events)
+    events, _ = await _drive(app, {"session_id": sid, "choice": {"id": "bot-a"}, "reply_to": menu["reply_to"]})
+    [handoff] = _quick_replies(events)
+
+    # empty text at the handoff → re-ask (still the handoff, escape option present)
+    events, _ = await _drive(
+        app, {"session_id": sid, "choice": {"id": None, "text": "   "}, "reply_to": handoff["reply_to"]}
+    )
+    assert not [e for e in events if e["data"]["type"] == "text"]  # no sub-bot answer
+    [reask] = _quick_replies(events)
+    assert [o["id"] for o in reask["options"]] == [MENU_CHOICE]  # handoff, not menu
+
+    # a real question now still routes to Bot A (route stayed sticky)
+    events, _ = await _drive(
+        app, {"session_id": sid, "choice": {"id": None, "text": "real q"}, "reply_to": reask["reply_to"]}
+    )
+    assert _text(events) == "Answer from A."
+
+
+async def test_router_invalid_menu_reply_reshows_menu_not_error(sessions):
+    """Batch 5a: a free-text / invalid id at the menu must re-show the menu, not crash
+    the turn into internal_error (resolve_choice used to raise)."""
+    cfg = _router_cfg([{"bot": "bot-a", "label": "Bot A"}])
+    app = _app(cfg, {"bot-a": _canned_bot("Answer from A.")}, sessions)
+
+    events, _ = await _drive(app, {"greeting": True})
+    sid = events[0]["data"]["session_id"]
+    [menu] = _quick_replies(events)
+
+    # reply with a bogus id (menu is allow_free_text=False, but a client could)
+    events, _ = await _drive(
+        app, {"session_id": sid, "choice": {"id": "nonexistent"}, "reply_to": menu["reply_to"]}
+    )
+    assert not [e for e in events if e["data"]["type"] == "error"]
+    [menu2] = _quick_replies(events)
+    assert [o["id"] for o in menu2["options"]] == ["bot-a"]  # menu re-shown
+    assert events[-1]["data"]["status"] == "awaiting_input"
+
+
 # --- 9c validation rules -----------------------------------------------------
 
 def test_router_requires_routes_and_routes_require_router():

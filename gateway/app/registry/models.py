@@ -45,9 +45,9 @@ class Defaults(BaseModel):
     """Global defaults; per-bot overrides must match this shape (check 8)."""
 
     model_config = ConfigDict(extra="forbid")
-    session_ttl_s: int = 7200
-    max_message_chars: int = 4000
-    history_max_turns: int = 20
+    session_ttl_s: int = Field(default=7200, ge=1)
+    max_message_chars: int = Field(default=4000, ge=1)
+    history_max_turns: int = Field(default=20, ge=1)  # 0 would invert a [-2*n:] slice to "unbounded"
     rate_limit: RateLimit = Field(default_factory=RateLimit)
     guard: Guard = Field(default_factory=Guard)
     greeting: Greeting = Field(default_factory=Greeting)
@@ -233,9 +233,9 @@ class BotCfg(BaseModel):
 
     # Overridable subset — the loader resolves these via deep-merge with global
     # `defaults` before construction, so they are always present here.
-    session_ttl_s: int
-    max_message_chars: int
-    history_max_turns: int
+    session_ttl_s: int = Field(ge=1)
+    max_message_chars: int = Field(ge=1)
+    history_max_turns: int = Field(ge=1)
     rate_limit: RateLimit
     guard: Guard
     greeting: Greeting

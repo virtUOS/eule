@@ -6,11 +6,12 @@ middle region). The checkpointer is wired in `build_bot_graph` ONLY.
 
 from __future__ import annotations
 
+import re
 from typing import Annotated, Any, Callable, Hashable, TypedDict
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.constants import TAG_NOSTREAM
 from langgraph.graph import END, START, StateGraph
@@ -87,10 +88,21 @@ def make_guard_node(cfg: Any, model: BaseChatModel) -> Callable[..., Any]:
 
     async def guard(state: BotState, config: RunnableConfig) -> dict[str, Any]:
         emit_status("thinking", "…")
-        result = await model.ainvoke(
-            [system, *state["messages"]], config={"tags": [TAG_NOSTREAM]}
+        # Classify ONLY the latest user message, not the whole history — a bounded,
+        # injection-resistant input (history can otherwise be seeded to steer the
+        # classifier). Greeting/empty turn → nothing to classify → in_scope.
+        latest = next(
+            (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None
         )
-        verdict = "out_of_scope" if "out_of_scope" in str(result.content).lower() else "in_scope"
+        if latest is None:
+            return {"scratch": {**state.get("scratch", {}), "guard": "in_scope"}}
+        result = await model.ainvoke([system, latest], config={"tags": [TAG_NOSTREAM]})
+        # Match the LEADING token only (the prompt asks for exactly one word). This
+        # deliberately FAILS OPEN (defaults to in_scope) on any non-conforming output:
+        # the guard is defense-in-depth — structural tool scope (golden rule 3) is the
+        # real enforcement, so an over-eager decline would harm more than a rare miss.
+        leading = re.split(r"[^a-z_]+", str(result.content).strip().lower(), maxsplit=1)[0]
+        verdict = "out_of_scope" if leading == "out_of_scope" else "in_scope"
         return {"scratch": {**state.get("scratch", {}), "guard": verdict}}
 
     return guard

@@ -95,7 +95,7 @@ async def test_wrapper_injects_ctx_identity_separate_from_arguments():
     client = _FakeMcpClient()
     ctx = _ctx(cfg, subject="alice")
     # the model tries to smuggle a subject as a normal arg
-    await mcp_call(ctx, client, "enrollment.get_my_credits", subject="bob", course_id="CS101")
+    await mcp_call(ctx, client, "enrollment.get_my_credits", {"subject": "bob", "course_id": "CS101"})
     tool_name, arguments, identity = client.calls[-1]
     assert tool_name == "enrollment.get_my_credits"
     # identity comes from ctx and travels in its OWN channel (→ _meta), never arguments

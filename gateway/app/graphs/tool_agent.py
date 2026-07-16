@@ -25,9 +25,7 @@ become the `sources` event. No magic result-shape sniffing on other tools.
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, SystemMessage
@@ -38,6 +36,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..mcp.client import McpClient, McpResult, McpToolSpec, allowed_tool_names, mcp_call
 from ..mcp.transport import client_for
+from ._shared import coerce_results, source_items
 from .emit import emit_sources, emit_status
 from .model import astream_message, build_chat_model
 from .skeleton import BotGraphBuilder, BotState, GraphFragment
@@ -71,30 +70,9 @@ class ToolAgentParams(BaseModel):
     max_tool_result_chars: int = Field(default=4000, ge=100, le=100_000)
 
 
-def _host(url: str) -> str:
-    net = urlparse(url).netloc
-    return net[4:] if net.startswith("www.") else net
-
-
 def _result_items(result: dict[str, Any]) -> list[dict[str, str]]:
-    """Parse a stored tool result into source items [{title, source, url}]. Tolerates
-    structured output or a JSON text body; a dict payload is unwrapped from `results`."""
-    payload: Any = result.get("structured")
-    if payload is None and result.get("text"):
-        try:
-            payload = json.loads(result["text"])
-        except json.JSONDecodeError:
-            payload = None
-    if isinstance(payload, dict):
-        payload = payload.get("results", [])
-    if not isinstance(payload, list):
-        return []
-    out: list[dict[str, str]] = []
-    for item in payload:
-        if isinstance(item, dict) and item.get("url"):
-            url = str(item["url"])
-            out.append({"title": str(item.get("title") or url), "source": _host(url), "url": url})
-    return out
+    """Stored tool result → source items [{title, source, url}] (http(s) only)."""
+    return source_items(coerce_results(result.get("structured"), result.get("text")))
 
 
 def _results_block(results: list[dict[str, Any]]) -> str:
@@ -195,7 +173,7 @@ def build_tool_agent_fragment(
                 name = call["name"]
                 client, _spec = specs[name]
                 emit_status("tool_call", "Looking that up…", name)
-                result: McpResult = await mcp_call(ctx, client, name, **call["args"])
+                result: McpResult = await mcp_call(ctx, client, name, call["args"])
                 results.append(
                     {
                         "tool": name,

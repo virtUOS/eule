@@ -10,7 +10,7 @@ The clock is injectable so TTL behaviour is tested deterministically without sle
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -27,9 +27,13 @@ class Session:
     # only be continued by the same subject — prevents cross-user conversation takeover
     # if a session_id leaks.
     subject: str | None = None
-    # One pending interrupt per session at a time (docs/01 §Reconnection).
+    # One pending interrupt per session at a time (docs/01 §Reconnection). Only the
+    # correlation token is kept; the interrupt payload itself lives in the graph
+    # checkpoint (each fragment re-validates its own resume via resolve_choice).
     pending_reply_to: str | None = None
-    pending_interrupt: dict[str, Any] | None = field(default=None)
+    # True while a turn is streaming on this session — rejects concurrent turns
+    # (docs/01: one turn at a time; interleaved checkpoint writes otherwise).
+    busy: bool = False
 
 
 class Sessions:
