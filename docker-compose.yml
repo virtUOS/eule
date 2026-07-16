@@ -5,8 +5,13 @@
 #
 # vLLM, the MCP servers, and Keycloak run elsewhere — they are URLs in config/*.yaml,
 # not services here. Secrets come from .env (see .env.example).
+#
+# Images are fully qualified. gateway/widget come from GHCR (published by CI on every
+# push to main; pin a release with EULE_IMAGE_TAG in .env). The `build:` entries stay
+# for local development: `docker compose up --build` builds from source instead.
 services:
   gateway:
+    image: ghcr.io/virtuos/eule/gateway:${EULE_IMAGE_TAG:-latest}
     build: ./gateway
     env_file: .env
     environment:
@@ -24,13 +29,14 @@ services:
     restart: unless-stopped
 
   widget:
+    image: ghcr.io/virtuos/eule/widget:${EULE_IMAGE_TAG:-latest}
     build: ./widget
     expose:
       - "80"
     restart: unless-stopped
 
   caddy:
-    image: caddy:2-alpine
+    image: docker.io/library/caddy:2-alpine
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     ports:
