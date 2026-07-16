@@ -37,7 +37,7 @@ jobs:
         working-directory: widget
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 26
           cache: npm
@@ -61,8 +61,8 @@ jobs:
     env:
       REGISTRY: ghcr.io
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
 
       # Only publish on branch pushes — not on PRs (fork PRs get no write token, and
       # PR builds should not publish images). PRs still build via the matrix below.
@@ -79,7 +79,7 @@ jobs:
       # branch, so a feature-branch push never clobbers it.
       - name: Docker metadata (gateway)
         id: meta-gateway
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/gateway
           tags: |
@@ -100,7 +100,7 @@ jobs:
 
       - name: Docker metadata (widget)
         id: meta-widget
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/widget
           tags: |
