@@ -53,6 +53,19 @@ test("context also rides a quick-reply resume turn", async ({ page }) => {
   expect(body.context).toEqual({ topic: "admissions" }); // gateway ignores it on resume
 });
 
+test("page=auto sends origin + pathname only (query/fragment stripped)", async ({ page }) => {
+  // the page URL itself carries a query string — it must NOT reach the gateway
+  await page.goto("/?mode=inline&page=auto&secret=token123");
+  await waitReady(page);
+  const [request] = await Promise.all([
+    page.waitForRequest((r) => r.url().includes("/chat") && r.method() === "POST"),
+    sendMessage(page, "hello"),
+  ]);
+  const sent = request.postDataJSON().context.page as string;
+  expect(sent).toBe("http://localhost:5173/"); // origin + pathname, no query
+  expect(sent).not.toContain("secret");
+});
+
 test("no context configured -> no context field on the wire", async ({ page }) => {
   await page.goto("/?mode=inline");
   await waitReady(page);

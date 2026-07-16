@@ -56,6 +56,12 @@ behind the same Caddy) do NOT need allowlisting: the gateway treats an `Origin`
 whose host matches the request `Host` as same-origin. Only third-party embedding
 sites go in `allowed_origins`.
 
+**Metrics:** the gateway exposes Prometheus metrics at `GET /metrics` — deliberately
+NOT under `/api/`, so Caddy never forwards it and it is unreachable from the
+internet. Point Prometheus at `gateway:8000/metrics` on the internal network. One
+structured JSON log line per turn is emitted on the `eule.turn` logger (bot, origin,
+context.page, status, durations — never message content).
+
 ### Hosting options
 
 - **Dedicated static container** (this compose): nginx serving `dist/`. Simple, immutable

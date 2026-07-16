@@ -36,6 +36,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import START
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..runtime import metrics
 from .emit import ask_quick_replies
 from .skeleton import BotGraphBuilder, BotState, GraphFragment
 
@@ -118,6 +119,7 @@ def build_router_fragment(
             scratch = dict(state.get("scratch", {}))
             if route in valid:
                 scratch["route"] = route
+                metrics.ROUTER_CHOICES.labels(cfg.id, str(route)).inc()  # demand share (step 11)
             else:
                 scratch.pop("route", None)
             return {"scratch": scratch}
@@ -138,6 +140,8 @@ def build_router_fragment(
             if choice_id == MENU_CHOICE:
                 scratch.pop("route", None)  # escape → back to the menu
                 scratch["handoff_intent"] = "menu"
+                # high escape rate = users picked the wrong lane = unclear menu labels
+                metrics.ROUTER_CHOICES.labels(cfg.id, MENU_CHOICE).inc()
                 return {"scratch": scratch}
             if not text.strip():
                 # empty/whitespace question, no escape → re-ask, keep the route sticky

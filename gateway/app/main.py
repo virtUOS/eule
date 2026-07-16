@@ -20,6 +20,7 @@ from .auth.keycloak import build_verifier
 from .graphs.factory import GraphCache
 from .registry.loader import load_and_validate
 from .registry.registry import Registry
+from .runtime import metrics
 from .runtime.ratelimit import RateLimiter
 from .runtime.sessions import Sessions
 
@@ -46,6 +47,7 @@ def create_app(
     sessions = sessions or Sessions()
     graphs = graphs or GraphCache(registry, sessions)
     limiter = ratelimiter or RateLimiter()
+    metrics.bind_store_gauges(sessions, limiter)  # step 11: observable store sizes
 
     # Prewarm: build every enabled bot's compiled graph NOW, so fragment-level config
     # errors (e.g. a required tool missing from the allowlist, a provider without a

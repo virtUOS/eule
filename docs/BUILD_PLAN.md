@@ -20,6 +20,8 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started
   was 5b) ✅, full MCP port (9b, deferred), cutover (10). Added
   2026-07-07 from meeting requirements; 9a/9b split + step 9 added 2026-07-15; front
   door confirmed → 5b moved to 9c, Step 5 deferred, Step 6 dissolved (2026-07-15).
+- ✅ **Step 11** — metrics (`/metrics` Prometheus) + structured per-turn log; pulled
+  forward from Later/v2, specced + built 2026-07-16.
 
 Verified across the done steps: gateway `pytest` + `mypy --strict` + `validate-config`;
 widget Vitest + Playwright(axe) + `tsc --strict`. Work is committed on `main`.
@@ -311,6 +313,80 @@ citation cards, retiring the separate askUOS deployment)
   retrieval quality). Note: the standalone askUOS *service* stays up (9a depends on it) —
   only its separate frontend surface is retired. Full decommissioning happens with 9b.
 
+## Step 11 — Metrics & per-turn observability  ✅ (planned + built 2026-07-16)
+
+Prometheus metrics + a structured per-turn log line, pulled forward from Later/v2
+(audit logging stays there). Independent of Step 10; not infra-gated.
+
+**Architecture**
+- `GET /metrics` on the gateway (`prometheus-client`, default registry — single
+  process). Publicly unreachable BY TOPOLOGY: Caddy routes only `/api/*` to the
+  gateway; Prometheus scrapes `gateway:8000/metrics` on the internal network. Add a
+  test asserting `/metrics` is not under `/api/`. Always-on (aggregate + cheap; no
+  config knob).
+- **Cardinality discipline (hard rule):** label values only from CLOSED sets —
+  `bot` (registry), `code` (protocol error vocabulary), `tool` (union of allowlists),
+  `status`, `verdict`, `provider`, `kind`, `locale` normalized to `de|en|other`,
+  `origin` normalized to {allowlisted origin verbatim, `same-origin`, `none`,
+  `other`} — NEVER the raw header on the deny path (attacker-mintable values).
+  NEVER `session_id`/`subject`/URLs/free text as labels.
+- **Privacy (hard rule):** metrics carry counts and durations only — no message
+  content, no per-user traceability (consistent with `observability.
+  log_message_content: false` default).
+
+**Metric catalog — operational**
+- `chat_turns_total{bot,kind,status,origin}` · `chat_turn_duration_seconds{bot}` ·
+  `chat_time_to_first_text_seconds{bot}` (runner: turn start → first `text`; the
+  perceived-latency number) · `chat_streams_active{bot}`
+- `model_call_duration_seconds{provider}` · `mcp_calls_total` +
+  `mcp_call_duration_seconds{server,tool,outcome}`
+- `http_errors_total{bot,code}` (full protocol vocabulary: rate_limited,
+  session_busy, forbidden_origin, token_expired, tool_unavailable, …)
+- `sessions_active` / `ratelimit_windows` gauges (custom collector over `count()`) ·
+  `sessions_swept_total` · `auth_verifications_total{outcome}`
+
+**Metric catalog — usage insights**
+- `chat_sessions_total{bot,auth}` · `session_turns{bot}` histogram (observed at
+  session eviction/sweep → conversation depth; 1-turn sessions ≈ hit-and-run)
+- `guard_verdicts_total{bot,verdict}` → out-of-scope rate (the top product signal:
+  users expect a bot to do something it doesn't)
+- `router_choices_total{router_bot,target}` incl. the `__menu__` escape (front-door
+  demand distribution; high escape rate = unclear menu labels)
+- `interrupt_replies_total{bot,kind=clicked|free_text}` ·
+  `turns_with_context_total{key}` (step-8 adoption) · `sources_emitted_total{bot}`
+  (citation coverage) · `client_locales_total{locale}`
+- `origin` label on `chat_turns_total` = traffic share per embedding SITE
+  (cardinality-safe because `embedding.allowed_origins` is a closed config set).
+
+**Page-level attribution (which URL the bot was called from)**
+- Headers cannot carry it: default `Referrer-Policy` strips the path cross-origin —
+  exactly the third-party-embed case. The designed channel is step-8's
+  `context.page` (`data-context-page="auto"`), already allowlist-validated (T12).
+- `context.page` goes into the STRUCTURED PER-TURN LOG, never a metric label
+  (unbounded cardinality): one JSON line per turn — `bot, origin, context.page,
+  kind, status, duration_ms, ttft_ms, error_code?` — activating the
+  `observability` config stub. No message content unless
+  `log_message_content: true`.
+- Widget privacy tweak: `data-context-page="auto"` sends `origin + pathname` only
+  (strip query/fragment — host-page query strings can carry tokens/personal data).
+  Sites wanting more pass an explicit value.
+
+**Instrumentation points** (existing seams): `runner.py` (turn lifecycle, TTFT,
+interrupts, in-stream errors — most metrics in one place) · `mcp/client.py::
+mcp_call` (the ONE wrapper) · `native.py` (pre-stream errors, stream gauge, origin
+normalization) · guard node + router fragment (stock code → all bots get it free) ·
+sessions/limiter collectors.
+
+**Deliberately out:** token/cost metrics (needs T9.3 accounting — add together);
+starter-chip vs typed split (needs an additive `client.source` protocol hint);
+`widget_version` (info-style gauge at most); Grafana dashboards/alerts (out of
+repo scope); per-user anything (never).
+
+**Gate:** `/metrics` exposes and parses; cardinality tests (deny-path origin →
+`other`; no unbounded label values); privacy test (no content/subject anywhere in
+exposition); per-turn log line shape test; TTFT/duration observed over the wire
+with fake bots; conformance suite unaffected.
+
 ## Later / v2 (do not build now)
 - Free-text classifier routing fallback (`routes.mode: classifier`) with a cheap model
   + "finding the right assistant…" status. Menu-first ships in v1.
@@ -320,7 +396,8 @@ citation cards, retiring the separate askUOS deployment)
 - Redis checkpointer for horizontal scaling (one-line swap in the graph factory).
 - Config hot-reload (admin reload endpoint / SIGHUP). Restart-on-change is atomic and
   fail-fast today; hot-reload adds cache-invalidation + in-flight-session questions.
-- Optional per-bot audit logging; observability (structured per-turn logs, metrics).
+- Optional per-bot audit logging (content-level; the metrics/per-turn-log half moved
+  to Step 11).
 - (Only if a real consumer appears) an OpenAI-compatible translator over the internal
   event stream. Not planned.
 

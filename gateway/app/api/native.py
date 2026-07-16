@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict
 from ..auth.keycloak import AuthError, bearer_token
 from ..registry.models import BotCfg
 from ..registry.registry import UnknownBot
+from ..runtime import metrics
 from ..runtime.context import ANONYMOUS, Identity
 from ..runtime.events import HEARTBEAT, HEARTBEAT_TICK, format_sse, with_heartbeat
 from ..runtime.runner import TurnRequest, run_turn
@@ -35,6 +36,15 @@ async def healthz(request: Request) -> JSONResponse:
     # Internal liveness/readiness probe (container + reverse-proxy healthchecks). Not
     # public-facing: no auth, no origin gate. Reaching it means config validated + booted.
     return JSONResponse({"status": "ok", "bots": request.app.state.registry.ids()})
+
+
+@router.get("/metrics")
+async def prometheus_metrics() -> Response:
+    # Prometheus exposition (BUILD_PLAN step 11). Deliberately NOT under /api/: Caddy
+    # forwards only /api/* to the gateway, so this is unreachable from the internet by
+    # topology — Prometheus scrapes gateway:8000/metrics on the internal network.
+    body, content_type = metrics.exposition()
+    return Response(content=body, media_type=content_type)
 
 
 _CORS_METHODS = "POST, GET, OPTIONS"
@@ -173,18 +183,26 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
     try:
         cfg = registry.get(bot_id)
     except UnknownBot:
+        # bot label "unknown": the path segment is attacker-controlled (cardinality).
+        metrics.ERRORS.labels("unknown", "unknown_bot").inc()
         return _error_response(404, "unknown_bot", f"No bot with id '{bot_id}'.")
+
+    def reject(status: int, code: str, message: str, **kw: Any) -> JSONResponse:
+        """Pre-stream rejection: counted into the same error metric as in-stream
+        errors (bot_id is registry-bounded here — cfg fetch succeeded)."""
+        metrics.ERRORS.labels(bot_id, code).inc()
+        return _error_response(status, code, message, **kw)
 
     # Origin gate (docs/06 T9.1). A disallowed cross-origin embed is refused outright.
     origin = request.headers.get("origin")
     allowed, cors = _cors_headers(origin, cfg, request.headers.get("host"))
     if not allowed:
-        return _error_response(403, "forbidden_origin", "This origin may not embed this bot.")
+        return reject(403, "forbidden_origin", "This origin may not embed this bot.")
 
     # exactly one input field (message | choice | greeting:true) — docs/01 §Request
     inputs = sum(x is not None for x in (body.message, body.choice)) + (1 if body.greeting else 0)
     if inputs != 1:
-        return _error_response(
+        return reject(
             400, "invalid_request", "Provide exactly one of: message, choice, greeting.",
             headers=cors,
         )
@@ -193,7 +211,7 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
     # is malformed — and would otherwise be treated as a resume that silently discards
     # an accompanying `message`.
     if body.reply_to is not None and body.choice is None:
-        return _error_response(
+        return reject(
             400, "invalid_request", "reply_to is only valid together with a choice.",
             headers=cors,
         )
@@ -201,19 +219,19 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
     # Context passthrough (docs/01 §Context): strict allowlist, pre-stream.
     ctx_err = _context_error(body.context)
     if ctx_err is not None:
-        return _error_response(400, "invalid_request", ctx_err, headers=cors)
+        return reject(400, "invalid_request", ctx_err, headers=cors)
 
     # Resume choice shape (bounded before it becomes graph state).
     choice_err = _choice_error(body.choice)
     if choice_err is not None:
-        return _error_response(400, "invalid_request", choice_err, headers=cors)
+        return reject(400, "invalid_request", choice_err, headers=cors)
 
     # Enforce the per-bot char limit on any free text the user can type — a plain
     # message OR a free-text reply to a quick-reply interrupt (choice.text).
     choice_text = body.choice.get("text") if body.choice else None
     longest = max((len(t) for t in (body.message, choice_text) if isinstance(t, str)), default=0)
     if longest > cfg.max_message_chars:
-        return _error_response(
+        return reject(
             400, "message_too_long",
             f"Message exceeds the {cfg.max_message_chars}-character limit.", headers=cors,
         )
@@ -224,18 +242,26 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
     if cfg.requires_auth:
         verifier = getattr(request.app.state, "auth", None)
         if verifier is None:
-            return _error_response(500, "internal_error", "Auth is not configured.", headers=cors)
+            return reject(500, "internal_error", "Auth is not configured.", headers=cors)
         token = bearer_token(request.headers.get("authorization"))
         if token is None:
-            return _error_response(401, "unauthorized", "Authentication required.", headers=cors)
+            return reject(401, "unauthorized", "Authentication required.", headers=cors)
         try:
             assert cfg.identity is not None  # guaranteed by validation check 5
             # Off the event loop: on a cold cache / key rotation, verify() does a
             # synchronous JWKS HTTP fetch — inline it would stall EVERY stream for
             # every bot while a slow/hung IdP times out.
             identity = await asyncio.to_thread(verifier.verify, token, cfg.identity)
+            metrics.AUTH_VERIFICATIONS.labels("ok").inc()
         except AuthError as e:
-            return _error_response(e.status, e.code, e.message, recoverable=e.recoverable, headers=cors)
+            outcome = {
+                "token_expired": "expired",
+                "unauthorized": "invalid",
+                "forbidden": "forbidden",
+                "internal_error": "unavailable",
+            }.get(e.code, "invalid")
+            metrics.AUTH_VERIFICATIONS.labels(outcome).inc()
+            return reject(e.status, e.code, e.message, recoverable=e.recoverable, headers=cors)
 
     # Rate limit (docs/06 T9.2): tier + key by identity (subject) or client IP.
     if identity.authenticated:
@@ -250,10 +276,25 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
             rl_key, per_min=tier.requests_per_min, per_day=tier.requests_per_day
         )
         if retry_after is not None:
-            return _error_response(
+            return reject(
                 429, "rate_limited", "Too many requests. Please slow down.",
                 recoverable=True, extra={"retry_after": retry_after}, headers=cors,
             )
+
+    # --- usage counters (step 11): the turn is accepted from here on -------------
+    kind = "greeting" if body.greeting else ("choice" if body.choice else "message")
+    origin_label = metrics.normalize_origin(
+        origin, request.headers.get("host"), cfg.embedding.allowed_origins
+    )
+    metrics.CLIENT_LOCALES.labels(
+        metrics.normalize_locale(body.client.locale if body.client else None)
+    ).inc()
+    for key in body.context or {}:
+        metrics.TURNS_WITH_CONTEXT.labels(key).inc()  # keys are allowlist-validated above
+    if body.choice is not None:
+        metrics.INTERRUPT_REPLIES.labels(
+            bot_id, "clicked" if body.choice.get("id") else "free_text"
+        ).inc()
 
     turn = TurnRequest(
         session_id=body.session_id,
@@ -265,9 +306,13 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
         context=body.context,
         identity=identity,
     )
+    context_page = (body.context or {}).get("page")
 
     async def stream() -> Any:
-        events = run_turn(registry, sessions, graphs, bot_id, turn)
+        events = metrics.observe_turn(
+            bot_id, origin_label, kind, context_page,
+            run_turn(registry, sessions, graphs, bot_id, turn),
+        )
         async for item in with_heartbeat(events, heartbeat_s):
             if item is HEARTBEAT_TICK:
                 yield HEARTBEAT

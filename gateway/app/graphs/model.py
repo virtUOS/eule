@@ -7,6 +7,7 @@ embodies a specialized bot (docs/08 §Scenario 3): the gateway cannot tell them 
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import httpx
@@ -16,6 +17,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
 from ..registry.registry import ResolvedProvider
+from ..runtime import metrics
 
 
 async def astream_message(
@@ -28,7 +30,11 @@ async def astream_message(
     `kwargs` pass through to the provider call — e.g. `extra_body={...}` reaches an
     OpenAI-compatible endpoint's request body verbatim (SDK-merged), which is how a
     Scenario-3 backend's non-standard per-request fields are supplied (docs/08)."""
+    # Model label: config-bounded (default_model values); fakes label as "unknown".
+    model_label = str(getattr(model, "model_name", None) or "unknown")
+    start = time.perf_counter()
     chunks = [c async for c in model.astream(messages, **kwargs)]
+    metrics.MODEL_CALL_DURATION.labels(model_label).observe(time.perf_counter() - start)
     if not chunks:
         return AIMessage(content="")
     full = chunks[0]

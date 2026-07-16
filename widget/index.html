@@ -34,7 +34,7 @@
       // host-page context passthrough (docs/01 §Context): ?topic=…&page=…
       const context = {};
       if (p.get("topic")) context.topic = p.get("topic");
-      if (p.get("page")) context.page = p.get("page") === "auto" ? location.href : p.get("page");
+      if (p.get("page")) context.page = p.get("page") === "auto" ? location.origin + location.pathname : p.get("page");
       if (Object.keys(context).length) opts.context = context;
       const tokenFn = p.get("getToken");
       if (tokenFn && typeof window[tokenFn] === "function") opts.getToken = window[tokenFn];

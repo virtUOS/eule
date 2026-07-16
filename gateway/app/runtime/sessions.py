@@ -16,6 +16,8 @@ from uuid import uuid4
 
 from langgraph.checkpoint.memory import MemorySaver
 
+from . import metrics
+
 
 @dataclass
 class Session:
@@ -34,6 +36,9 @@ class Session:
     # True while a turn is streaming on this session — rejects concurrent turns
     # (docs/01: one turn at a time; interleaved checkpoint writes otherwise).
     busy: bool = False
+    # Turns run on this session — observed into the session_turns histogram at
+    # eviction (conversation-depth usage metric, BUILD_PLAN step 11).
+    turns: int = 0
 
 
 class Sessions:
@@ -71,7 +76,10 @@ class Sessions:
         return max(0, int(session.expires_at - self._clock()))
 
     def _evict(self, session_id: str) -> None:
-        self._sessions.pop(session_id, None)
+        session = self._sessions.pop(session_id, None)
+        if session is not None and session.turns > 0:
+            # Conversation depth is only knowable once the session ends (step 11).
+            metrics.SESSION_TURNS.labels(session.bot_id).observe(session.turns)
         deleter = getattr(self.checkpointer, "delete_thread", None)
         if callable(deleter):
             try:
@@ -84,6 +92,7 @@ class Sessions:
         expired = [sid for sid, s in self._sessions.items() if now > s.expires_at]
         for sid in expired:
             self._evict(sid)
+        metrics.SESSIONS_SWEPT.inc(len(expired))
         return len(expired)
 
     def count(self) -> int:

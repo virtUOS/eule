@@ -36,7 +36,12 @@ function readScriptOptions(script: HTMLScriptElement): WidgetOptions | null {
   }
   const context: Record<string, string> = {};
   if (script.dataset.contextPage) {
-    context.page = script.dataset.contextPage === "auto" ? location.href : script.dataset.contextPage;
+    // "auto" sends origin + pathname ONLY — host-page query strings can carry tokens
+    // or personal data (step 11 privacy). Sites wanting more pass an explicit value.
+    context.page =
+      script.dataset.contextPage === "auto"
+        ? location.origin + location.pathname
+        : script.dataset.contextPage;
   }
   if (script.dataset.contextTopic) context.topic = script.dataset.contextTopic;
   if (script.dataset.contextLocale) context.locale = script.dataset.contextLocale;

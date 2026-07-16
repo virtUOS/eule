@@ -17,6 +17,7 @@ from langgraph.constants import TAG_NOSTREAM
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
+from ..runtime import metrics
 from .emit import emit_status
 
 
@@ -103,6 +104,7 @@ def make_guard_node(cfg: Any, model: BaseChatModel) -> Callable[..., Any]:
         # real enforcement, so an over-eager decline would harm more than a rare miss.
         leading = re.split(r"[^a-z_]+", str(result.content).strip().lower(), maxsplit=1)[0]
         verdict = "out_of_scope" if leading == "out_of_scope" else "in_scope"
+        metrics.GUARD_VERDICTS.labels(cfg.id, verdict).inc()  # out-of-scope rate (step 11)
         return {"scratch": {**state.get("scratch", {}), "guard": verdict}}
 
     return guard

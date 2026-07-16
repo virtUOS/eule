@@ -11,6 +11,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
 from ..registry.registry import Registry
+from . import metrics
 from .context import ANONYMOUS, Identity, build_runtime_context
 from .events import PROTOCOL_VERSION, EventEmitter, MessageIds, translate
 from .sessions import Session, Sessions
@@ -70,11 +71,14 @@ async def run_turn(
     msg_ids = MessageIds()
     cfg = registry.get(bot_id)  # pre-checked by endpoint; UnknownBot → 404 there
 
+    auth_label = "authenticated" if req.identity.authenticated else "anonymous"
+
     # --- session resolution ---
     session: Session
     if req.session_id is None:
         session = sessions.new(bot_id, cfg.session_ttl_s)
         session.subject = req.identity.subject  # stamp owner (None for public bots)
+        metrics.SESSIONS_TOTAL.labels(bot_id, auth_label).inc()
     else:
         found = sessions.get(req.session_id)
         # A session may only be continued by the subject that created it, AND only on
@@ -89,6 +93,7 @@ async def run_turn(
             # Unknown/expired session → mint a fresh one, then fail this turn so the
             # widget starts over cleanly (docs/01: session_not_found, start fresh).
             fresh = sessions.new(bot_id, cfg.session_ttl_s)
+            metrics.SESSIONS_TOTAL.labels(bot_id, auth_label).inc()
             yield emitter.make(
                 "session",
                 session_id=fresh.session_id,
@@ -124,6 +129,7 @@ async def run_turn(
             yield ev
         return
     session.busy = True
+    session.turns += 1  # conversation depth, observed at eviction (step 11)
     try:
         is_resume = req.choice is not None or req.reply_to is not None
 

@@ -15,12 +15,14 @@ it. The concrete transport (`StreamableHttpMcpClient`) routes `identity` to `_me
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from langchain_core.tools import BaseTool, StructuredTool
 
 from ..registry.models import BotCfg
+from ..runtime import metrics
 from ..runtime.context import RuntimeContext
 
 
@@ -70,11 +72,19 @@ async def mcp_call(
     `arguments` is a plain dict, NOT **kwargs: a model-authored arg named `ctx`,
     `client`, or `tool_name` would otherwise collide with these positionals and turn
     the turn into an internal_error, and a real tool could never declare such a param."""
-    return await client.call(
-        tool_name,
-        arguments=dict(arguments),
-        identity={"subject": ctx.identity.subject, "claims": ctx.identity.claims},
-    )
+    start = time.perf_counter()
+    try:
+        result = await client.call(
+            tool_name,
+            arguments=dict(arguments),
+            identity={"subject": ctx.identity.subject, "claims": ctx.identity.claims},
+        )
+    except Exception:
+        metrics.MCP_CALLS.labels(tool_name, "exception").inc()
+        raise
+    metrics.MCP_CALL_DURATION.labels(tool_name).observe(time.perf_counter() - start)
+    metrics.MCP_CALLS.labels(tool_name, "error" if result.is_error else "ok").inc()
+    return result
 
 
 def build_mcp_tool(

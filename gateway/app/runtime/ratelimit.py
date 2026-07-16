@@ -35,6 +35,9 @@ class RateLimiter:
             self._windows[(scope, key)] = w
         return w
 
+    def window_count(self) -> int:
+        return len(self._windows)
+
     def sweep(self) -> int:
         """Drop expired windows. Keys are client-mintable (per-IP), so without GC the
         map grows unboundedly; called from the app's periodic sweep task."""
