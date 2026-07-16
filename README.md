@@ -1,75 +1,260 @@
 # Scoped AI Support Bots
 
-A self-hosted, multi-bot chatbot ecosystem for a university: several **narrowly-scoped**
-support bots (IT helpdesk, course catalog, enrollment, …), each backed by an
-OpenAI-compatible model, each calling internal systems as **MCP tools**, embeddable on
-any site through one hand-built accessible widget.
+**Self-hosted infrastructure for running several narrowly-scoped AI support bots behind
+one embeddable chat widget.** You define each bot in a YAML file — its system prompt, its
+model, and the internal systems it may call as tools — and the gateway serves all of them
+from a single process. A university might run an IT-helpdesk bot, a study-advice bot, and
+a front-door bot that routes between them, each answering only within its lane, each
+embeddable on any web page with a two-line `<script>` tag.
 
-Three independent pieces:
+The design goal is **safe, boring operations**: adding or changing a bot is a
+reviewed config change, not a code deploy; a bot can only reach the tools its config
+allows; and the authenticated user's identity is enforced server-side, never passed
+through the model. Accessibility (WCAG 2.1 AA) is built into the widget from the first
+line, not bolted on.
 
-- **Widget** (`widget/`) — vanilla-TS, Shadow-DOM, single `widget.js`. Renders the chat
-  UI, consumes the SSE protocol. WCAG 2.1 AA built in.
-- **Gateway** (`gateway/`) — FastAPI. Bot registry + config, LangGraph runner, auth,
-  MCP tool calling, streaming SSE. One process serves every bot.
-- **MCP servers** — one per backend system, run elsewhere; the gateway calls them over
-  streamable-HTTP and enforces identity server-side.
+> **Status:** the platform (gateway, widget, auth, rate-limiting, MCP tool-calling,
+> stock bot fragments, the router front door) is built and tested. Going fully live
+> needs your external model + MCP endpoints wired in. See `docs/BUILD_PLAN.md` for
+> authoritative per-step status.
 
-```
-Embedded widget ──POST /api/v1/bots/{id}/chat (SSE)──► Gateway ──► OpenAI-compatible model
-                                                          │  └──► MCP servers (tools)
-                                                          └──► Keycloak (auth, if required)
-```
+---
 
-**Single-tenant by design:** one deployment = one tenant (university or external client).
-More clients = more independent deployments, not tenant-scoping in the code.
+## How it fits together
 
-## Why a custom protocol (not "just an OpenAI API")
-
-The widget talks to a **server-side orchestrator**, not a model. The orchestrator pauses
-for quick-reply choices, emits citations and progress, owns the session, and enforces
-auth + tool scoping — none of which the OpenAI chat-completions API expresses. We *do*
-speak OpenAI-compatible on the gateway→model hop. See `docs/01-protocol.md` and the
-`docs/02-dual-api.md` tombstone for the full rationale.
-
-## Repository layout
+Three independent pieces, plus the external services you provide:
 
 ```
-gateway/        FastAPI app (registry, runtime, graphs, auth, mcp) + tests
-widget/         TS widget source, build to dist/widget.js + tests
-config/         global.yaml + bots/*.yaml  (git-managed, PR-reviewed, no secrets)
-docs/           the contracts — read these before changing behavior
-caddy/          reverse-proxy config (TLS, SSE, static widget)
-design/         wolke visual/interaction reference
-docker-compose.yml   gateway + widget + caddy
+                          ┌──────────────────────────────────────────┐
+  Embedded widget         │                Gateway                    │
+  (widget.js on any  ──POST /api/v1/bots/{id}/chat (SSE)──►  registry │
+   site, Shadow DOM)      │  session · rate-limit · origin gate       │
+                          │  LangGraph runner ── per-bot graph        │
+                          └───┬───────────────┬──────────────┬────────┘
+                              │               │              │
+                    OpenAI-compatible    MCP servers     Keycloak
+                    model (vLLM/         (your tools,    (OIDC, only
+                    LiteLLM/…)           streamable-HTTP) for auth bots)
 ```
 
-## Documentation (the contracts)
+- **Widget** (`widget/`) — vanilla TypeScript, Shadow-DOM isolated, built to a single
+  `widget.js`. Renders the chat UI and consumes the gateway's SSE event protocol.
+- **Gateway** (`gateway/`) — FastAPI. Loads the bot registry from config, runs one
+  LangGraph graph per bot, validates auth, calls MCP tools with identity injected
+  out-of-band, and streams responses as Server-Sent Events. One process serves every bot.
+- **MCP servers** — one per backend system (docs search, a database, a REST API…). They
+  run wherever you like; the gateway calls them over streamable-HTTP and they enforce
+  "this user, their data only".
 
-Read the one you need; they are the source of truth and override code.
+**Single-tenant by design.** One deployment serves one tenant (one university, or one
+external client). More clients means more independent deployments — there is no
+tenant-scoping in the registry, sessions, or config.
 
-| Doc | What |
+**Why a custom widget↔gateway protocol instead of a plain OpenAI API?** The widget talks
+to a *server-side orchestrator*, not a model: it pauses for quick-reply menus, streams
+progress and citations, owns the session, and enforces auth + tool scope — none of which
+the OpenAI chat-completions shape can express. (The gateway→model hop *is*
+OpenAI-compatible.) Full rationale in `docs/01-protocol.md`.
+
+---
+
+## Deployment
+
+The repository ships a Docker Compose stack — **gateway + widget (static `widget.js`) +
+Caddy** (TLS + reverse proxy + SSE-safe buffering). The model, MCP servers, and Keycloak
+are **external** services you point the config at; they are not part of the compose stack.
+
+### 1. Provide the external services
+
+| Service | Needed for | Config field |
+|---|---|---|
+| OpenAI-compatible model endpoint (vLLM, LiteLLM, or a hosted bot) | every bot that calls a model | `model_providers.<name>.base_url` |
+| MCP server(s) | any bot with tools | `mcp_servers.<name>.url` |
+| Keycloak (OIDC) | only bots with `requires_auth: true` | `auth.issuer` / `auth.jwks_url` |
+
+### 2. Configure and bring it up
+
+```bash
+cp .env.example .env
+# .env: fill in the secret VALUES (API keys, MCP tokens) + SITE_ADDRESS (your hostname).
+# config/global.yaml: point base_url / mcp_servers.url / auth.jwks_url at your services.
+
+docker compose up --build
+```
+
+Caddy waits for the gateway's healthcheck before serving, so there are no boot-time 502s.
+The gateway **fails fast**: if the config is invalid it refuses to boot rather than
+starting a misconfigured bot (see *Configuration → Validation*).
+
+### 3. Deployment notes
+
+- **Reverse proxy & rate limiting.** The stack sets `network.trust_forwarded_for: true`
+  in `config/global.yaml` because Caddy fronts the gateway — the client IP used for
+  anonymous rate limits is read from the rightmost `X-Forwarded-For` hop. **If you expose
+  the gateway directly (no trusted proxy), set this to `false`**, or a forged header
+  bypasses rate limits.
+- **Secrets never live in config.** `config/*.yaml` holds only environment-variable
+  *names* (the `*_env` fields); the values come from `.env` (git-ignored). Nothing secret
+  is committed.
+- **Sessions are in-memory** (single instance). Survive-reload persistence works via the
+  widget's `localStorage`; horizontal scaling (a Redis checkpointer) is a documented
+  swap-point, not yet built (`docs/BUILD_PLAN.md` → *Later / v2*).
+- **Health:** `GET /healthz` on the gateway.
+
+Full topology, hosting options, and widget delivery: `docs/07-deployment.md`.
+
+---
+
+## Configuration
+
+**Everything about a bot lives in YAML.** Global settings in `config/global.yaml`; one
+file per bot in `config/bots/<id>.yaml` (the filename stem must equal the bot `id`).
+Config is git-managed and PR-reviewed — treat it as the deployment's source of truth.
+
+### Global — `config/global.yaml`
+
+```yaml
+model_providers:              # OpenAI-compatible endpoints, referenced by name
+  default:
+    base_url: "http://vllm:8000/v1"
+    api_key_env: "VLLM_API_KEY"        # secret by ENV NAME, never a value
+    default_model: "llama-3.3-70b-instruct"
+  fast-small:                          # a cheaper model for guards / simple bots
+    base_url: "http://vllm-small:8000/v1"
+    api_key_env: "VLLM_SMALL_API_KEY"
+    default_model: "llama-3.1-8b-instruct"
+
+mcp_servers:                 # your tool backends (streamable-HTTP)
+  uos-docs:
+    url: "https://mcp-docs.example.org/mcp"
+    bearer_token_env: "UOS_DOCS_MCP_TOKEN"   # authenticates the gateway to the server
+
+auth:                        # Keycloak OIDC — required once any bot sets requires_auth
+  issuer: "https://sso.example.org/realms/university"
+  jwks_url: "https://sso.example.org/realms/university/protocol/openid-connect/certs"
+  audience: "chatbots"
+
+network:
+  trust_forwarded_for: true  # true only behind a trusted proxy (see Deployment)
+
+defaults: { session_ttl_s: 7200, max_message_chars: 4000, history_max_turns: 20, … }
+theme: { … }                 # light/dark design tokens, contrast-validated at boot
+```
+
+### A bot — `config/bots/<id>.yaml`
+
+Most bots need **no code at all** — they select a *stock graph fragment* and parameterize
+it. Example, a config-only tool-using bot:
+
+```yaml
+version: 1
+id: "campus-search"
+name: "Campus Search"
+description: "Finds information on the university website."   # also used by the guard
+enabled: true
+
+graph: "tool-agent"          # a stock fragment (see table below)
+graph_params:
+  max_tool_rounds: 1         # 1 = look up once, then answer (bounded)
+  sources_from: ["uos_search"]   # which tool's results become citations
+
+model:   { provider: "fast-small" }
+prompt:  { system: "You help students find information. Answer only from tool results." }
+
+requires_auth: false
+tools:   { mcp_servers: ["uos-docs"], allow: ["uos_search"], deny: [] }
+guard:   { enabled: true, provider: "fast-small" }   # decline off-topic (public bots)
+
+embedding:
+  mode: "launcher"
+  allowed_origins: ["https://www.example.org"]       # sites permitted to embed this bot
+
+starter_replies:
+  en: [ { label: "Library hours", query: "What are the library's opening hours?" } ]
+```
+
+### Stock fragments — pick one with `graph:`
+
+| `graph:` | What it does | Typical bot |
+|---|---|---|
+| `passthrough` | Streams the model with the conversation; no tools. | A prompted assistant, or a whole bot behind an OpenAI-compatible endpoint. |
+| `tool-agent` | Bounded model-driven tool loop over the allowlisted MCP tools, then a final answer. | Retrieval / lookup bots. |
+| `router` | Menu-first **front door**: shows one option per target, routes to the chosen sub-bot, sticky, with an "other topic" escape. | The "ask us anything" launcher. |
+
+A **front door** is itself just a config-only bot:
+
+```yaml
+id: "assistant"
+graph: "router"
+routes:
+  targets:
+    - { bot: "it-helpdesk",   label: "IT help" }
+    - { bot: "campus-search", label: "Campus search" }
+greeting: { mode: "bot_greeting" }     # the menu is the greeting
+```
+
+Bots with genuinely novel flows (custom interrupts, bespoke retrieval) can instead ship a
+small hand-written fragment in `gateway/app/graphs/` — but that is the exception, not the
+default. The full field reference is `docs/03-registry.md`; the step-by-step guide is
+`docs/09-adding-a-bot.md`.
+
+### Validation (fail-fast)
+
+Before the gateway boots — and in CI — run:
+
+```bash
+cd gateway && uv run python -m app.cli validate-config ../config/
+```
+
+Fourteen checks must pass: every model provider and MCP server referenced exists, every
+`*_env` secret is set, `graph_params` match the selected fragment, `sources_from` stay
+within the tool allowlist, theme contrast meets WCAG, a public router only routes to
+public targets, and more. **Invalid config blocks boot** — you never get a
+half-configured bot in production.
+
+### Adding or changing a bot
+
+1. Edit or add a `config/bots/<id>.yaml` (and any new `mcp_servers` entry + its `.env`
+   token).
+2. `validate-config` (CI gate).
+3. Restart the gateway. Config is volume-mounted, so **no image rebuild** for a
+   config-only bot.
+
+---
+
+## Embedding the widget
+
+Deploy `widget.js` once; each site references it and is listed in the bot's
+`embedding.allowed_origins`:
+
+```html
+<script src="https://assistant.example.org/widget.js"
+        data-bot-id="it-helpdesk"></script>
+```
+
+| Attribute | Purpose |
 |---|---|
-| `docs/00-overview.md` | Architecture, tenancy, key decisions. Start here. |
-| `docs/01-protocol.md` | Widget ↔ gateway wire protocol (SSE events). |
-| `docs/03-registry.md` | Bot/global config schema + the 13 validation checks. |
-| `docs/04-node-contract.md` | The LangGraph interface every bot satisfies. |
-| `docs/05-accessibility.md` | Widget WCAG 2.1 AA spec. |
-| `docs/06-integration-and-tests.md` | End-to-end sequences + test plan (T1–T11). |
-| `docs/07-deployment.md` | Deploy topology, widget delivery, external-service config. |
-| `docs/08-integration-scenarios.md` | Which backends fit + the overhead of each. |
-| `docs/09-adding-a-bot.md` | **How to add a bot** (step by step). |
-| `docs/BUILD_PLAN.md` | Sequenced build steps + current status. |
+| `data-bot-id` | **required** — which bot to open |
+| `data-base-url` | gateway origin, if different from the script's origin |
+| `data-mode` | `launcher` (default) · `inline` · `standalone` |
+| `data-scheme` | force `light` / `dark` (default: follow the OS) |
+| `data-get-token` | name of a global function returning a bearer token (auth bots) |
+| `data-context-page` / `data-context-topic` | non-sensitive page context passed to the bot |
 
-## Quickstart (local dev)
+Pages served from the deployment's own host don't need to allowlist themselves. Details:
+`docs/07-deployment.md`.
+
+---
+
+## Local development
 
 **Gateway** (Python 3.12, [uv](https://docs.astral.sh/uv/)):
 
 ```bash
 cd gateway
 uv venv --python 3.12 && uv pip install -e ".[dev]"
-# secrets are referenced by env NAME in config; any value works for local validate/test:
-export VLLM_API_KEY=x VLLM_SMALL_API_KEY=x UOS_DOCS_MCP_TOKEN=x
-uv run python -m app.cli validate-config ../config/   # must pass before boot
+export VLLM_API_KEY=x VLLM_SMALL_API_KEY=x ASKUOS_API_KEY=x UOS_DOCS_MCP_TOKEN=x
+uv run python -m app.cli validate-config ../config/   # config gate
 uv run pytest -q                                       # tests
 uv run mypy --strict app                               # types
 uv run uvicorn app.main:app --reload                   # serve on :8000
@@ -80,47 +265,51 @@ uv run uvicorn app.main:app --reload                   # serve on :8000
 ```bash
 cd widget
 npm install && npx playwright install chromium
-npm run dev            # dev host with a stubbed backend: /?mode=launcher|inline
+npm run dev            # dev host + stubbed backend: open /?mode=launcher
 npm test               # Vitest units
-npm run test:a11y      # Playwright + axe (WCAG)
+npm run test:a11y      # Playwright + axe (WCAG) + behavior specs
 npm run build          # → dist/widget.js
 ```
 
-**Full stack** (needs external vLLM / MCP / Keycloak reachable):
+Conventions: `mypy --strict` (gateway) and `tsc --strict` (widget); tests land with the
+code; the contracts in `docs/` are fixed — raise a question rather than drifting. See
+`CLAUDE.md` for the full operating rules.
 
-```bash
-cp .env.example .env    # fill in secrets + SITE_ADDRESS
-# edit config/global.yaml: base_url / mcp_servers.url / auth.jwks_url → your services
-docker compose up --build
+---
+
+## Repository layout
+
+```
+gateway/   FastAPI app — registry, runtime, graphs (stock + bespoke fragments), auth, mcp
+widget/    TypeScript widget source → dist/widget.js, plus unit + e2e/a11y tests
+config/    global.yaml + bots/*.yaml   (git-managed, PR-reviewed, no secrets)
+caddy/     reverse-proxy config (TLS, SSE, static widget)
+docs/      the contracts — read before changing behavior
+docker-compose.yml   gateway + widget + caddy
 ```
 
-## Embedding the widget
+Bundled reference bots in `config/bots/`: `echo` (stub), `it-helpdesk` (bespoke
+retrieve-then-generate), `campus-search` (stock `tool-agent`), `askuos` (stock
+`passthrough` over an external OpenAI-compatible bot), `assistant` (stock `router` front
+door).
 
-Deploy `widget.js` once; every site references it by URL and adds its origin to the
-bot's `embedding.allowed_origins`:
+## Documentation
 
-```html
-<script src="https://assistant.uni-osnabrueck.de/widget.js"
-        data-bot-id="it-helpdesk"></script>
-```
+The `docs/` files are the source of truth and override the code.
 
-Attributes: `data-bot-id` (required), `data-base-url` (if the gateway is a different
-origin), `data-mode` (`launcher`|`inline`|`standalone`), `data-scheme` (`light`|`dark`),
-`data-get-token` (name of a global returning a bearer token, for auth bots). See
-`docs/07-deployment.md`.
+| Doc | What |
+|---|---|
+| `docs/00-overview.md` | Architecture, tenancy, key decisions. **Start here.** |
+| `docs/01-protocol.md` | Widget ↔ gateway wire protocol (SSE events). |
+| `docs/03-registry.md` | Bot/global config schema + the 14 validation checks. |
+| `docs/04-node-contract.md` | The LangGraph interface every bot satisfies. |
+| `docs/05-accessibility.md` | Widget WCAG 2.1 AA specification. |
+| `docs/06-integration-and-tests.md` | End-to-end sequences + test plan. |
+| `docs/07-deployment.md` | Deploy topology, widget delivery, external-service config. |
+| `docs/08-integration-scenarios.md` | Which kinds of backend fit, and the overhead of each. |
+| `docs/09-adding-a-bot.md` | **How to add a bot**, step by step. |
+| `docs/BUILD_PLAN.md` | Sequenced build steps + current status. |
 
-## Status
+## License
 
-Skeleton complete and exercised by a reference bot; see `docs/BUILD_PLAN.md` for the
-authoritative, per-step status. In short: gateway + widget + auth + abuse controls + MCP
-transport are done and tested; the `it-helpdesk` reference bot demonstrates the full
-tool-using path. Remaining work is per-bot config/fragments and going live against real
-endpoints (which needs the external model + MCP servers).
-
-## Conventions
-
-- `mypy --strict` on the gateway, `tsc --strict` on the widget. Tests land with code.
-- Config holds secret **references** (`*_env`), never values. `.env` is git-ignored.
-- The contracts in `docs/` are fixed — if code wants to bend one, raise it, don't drift.
-
-See `CLAUDE.md` for the full operating rules (golden rules, tech stack, build order).
+MIT — see [LICENSE](LICENSE).
