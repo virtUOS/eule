@@ -47,6 +47,14 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # Stay on Node 24 LTS deliberately: Node 26's experimental native localStorage
+      # broke the jsdom-based widget tests (see ci.yml), and Node majors should be a
+      # planned migration, not a drive-by bump. Minor/patch 24.x updates still flow.
+      # To migrate later: bump widget/Dockerfile + ci.yml node-version together, then
+      # (optionally) drop this rule.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
 
   # GitHub Actions used by the workflows.
   - package-ecosystem: github-actions
