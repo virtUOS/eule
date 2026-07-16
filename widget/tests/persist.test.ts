@@ -115,6 +115,37 @@ describe("hostile / stale storage never resurrects UI state", () => {
     localStorage.setItem(KEY, JSON.stringify(conv({ sessionId: "" })));
     expect(loadConversation(BOT)).toBeNull();
   });
+
+  // Element shapes: an array containing null/foreign objects passed a bare
+  // Array.isArray check and then threw during rehydration rendering — which,
+  // unhandled, bricked init on EVERY load (review batch 2).
+  it("rejects null / malformed source elements", () => {
+    const c = conv();
+    (c.entries[1] as { sources: unknown }).sources = [null];
+    localStorage.setItem(KEY, JSON.stringify(c));
+    expect(loadConversation(BOT)).toBeNull();
+
+    const c2 = conv();
+    (c2.entries[1] as { sources: unknown }).sources = [{ title: 1, source: "x" }];
+    localStorage.setItem(KEY, JSON.stringify(c2));
+    expect(loadConversation(BOT)).toBeNull();
+  });
+
+  it("rejects null / malformed pending option elements", () => {
+    const c = conv({
+      pending: { replyTo: "evt_1", prompt: "?", options: [{ id: "a", label: "A" }], allowFreeText: true },
+    });
+    (c.pending as { options: unknown }).options = [null];
+    localStorage.setItem(KEY, JSON.stringify(c));
+    expect(loadConversation(BOT)).toBeNull();
+
+    const c2 = conv({
+      pending: { replyTo: "evt_1", prompt: "?", options: [{ id: "a", label: "A" }], allowFreeText: true },
+    });
+    (c2.pending as { options: unknown }).options = [{ id: "a" }]; // label missing
+    localStorage.setItem(KEY, JSON.stringify(c2));
+    expect(loadConversation(BOT)).toBeNull();
+  });
 });
 
 describe("storage unavailability degrades silently", () => {

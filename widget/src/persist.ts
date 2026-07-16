@@ -102,6 +102,36 @@ export function loadConversation(botId: string, now: number = Date.now()): Persi
   return conv;
 }
 
+// Element shapes are validated too — an array containing e.g. `null` would pass a
+// bare Array.isArray check and then throw during rehydration rendering, which (if
+// unhandled) would brick init on every load until localStorage is cleared manually.
+function isSource(s: unknown): boolean {
+  if (typeof s !== "object" || s === null) return false;
+  const src = s as Record<string, unknown>;
+  return (
+    typeof src.title === "string" &&
+    typeof src.source === "string" &&
+    (src.url === undefined || typeof src.url === "string")
+  );
+}
+
+function isOption(o: unknown): boolean {
+  if (typeof o !== "object" || o === null) return false;
+  const opt = o as Record<string, unknown>;
+  return typeof opt.id === "string" && typeof opt.label === "string";
+}
+
+function isEntry(e: unknown): boolean {
+  if (typeof e !== "object" || e === null) return false;
+  const entry = e as Record<string, unknown>;
+  return (
+    (entry.role === "user" || entry.role === "bot") &&
+    typeof entry.text === "string" &&
+    (entry.sources === undefined ||
+      (Array.isArray(entry.sources) && entry.sources.every(isSource)))
+  );
+}
+
 function isValid(conv: PersistedConversation): boolean {
   return (
     typeof conv === "object" &&
@@ -111,17 +141,14 @@ function isValid(conv: PersistedConversation): boolean {
     conv.sessionId.length > 0 &&
     typeof conv.expiresAt === "number" &&
     Array.isArray(conv.entries) &&
-    conv.entries.every(
-      (e) =>
-        (e.role === "user" || e.role === "bot") &&
-        typeof e.text === "string" &&
-        (e.sources === undefined || Array.isArray(e.sources)),
-    ) &&
+    conv.entries.every(isEntry) &&
     (conv.pending === null ||
       (typeof conv.pending === "object" &&
+        conv.pending !== null &&
         typeof conv.pending.replyTo === "string" &&
         typeof conv.pending.prompt === "string" &&
         Array.isArray(conv.pending.options) &&
+        conv.pending.options.every(isOption) &&
         typeof conv.pending.allowFreeText === "boolean"))
   );
 }

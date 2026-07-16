@@ -64,6 +64,11 @@ export class WolkeWidget {
   private pendingSources: string | null = null; // announced AFTER the body, on done
   private typingEl: HTMLElement | null = null;
   private lastRequest: ChatRequest | null = null;
+  // One turn at a time: `streaming` gates every submit path (button disabling alone
+  // is NOT enough — Enter and chip clicks bypass it); `abortCtl` lets reset/dispose
+  // cancel the in-flight stream instead of letting it write into a cleared log.
+  private streaming = false;
+  private abortCtl: AbortController | null = null;
   private releaseTrap: (() => void) | null = null;
   private unwatchScheme: (() => void) | null = null;
   private open = false;
@@ -197,30 +202,45 @@ export class WolkeWidget {
   private rehydrate(): boolean {
     const conv = loadConversation(this.opts.botId);
     if (!conv || conv.entries.length === 0) return false;
-    this.sessionId = conv.sessionId;
-    this.expiresAt = conv.expiresAt;
-    this.entries = conv.entries;
-    this.started = true;
-    for (const entry of conv.entries) {
-      if (entry.role === "user") {
-        this.dom.log.appendChild(userMessage(entry.text, this.s));
-      } else {
-        const bot = botMessage(this.s, this.config.name);
-        bot.appendText(entry.text);
-        if (entry.sources?.length) bot.attachSources(entry.sources, this.s);
-        this.dom.log.appendChild(bot.el);
+    try {
+      this.sessionId = conv.sessionId;
+      this.expiresAt = conv.expiresAt;
+      this.entries = conv.entries;
+      this.started = true;
+      for (const entry of conv.entries) {
+        if (entry.role === "user") {
+          this.dom.log.appendChild(userMessage(entry.text, this.s));
+        } else {
+          const bot = botMessage(this.s, this.config.name);
+          bot.appendText(entry.text);
+          if (entry.sources?.length) bot.attachSources(entry.sources, this.s);
+          this.dom.log.appendChild(bot.el);
+        }
       }
+      if (conv.pending) {
+        this.pending = conv.pending;
+        this.renderInterruptChips(conv.pending, /* restore */ true);
+      }
+      this.autoscroll();
+      return true;
+    } catch {
+      // Defense in depth: a blob that passed validation but still failed to render
+      // must never brick init (it would fail identically on EVERY load until the
+      // user clears localStorage by hand). Drop it and start fresh.
+      clearConversation(this.opts.botId);
+      this.sessionId = null;
+      this.expiresAt = null;
+      this.entries = [];
+      this.started = false;
+      this.dom.log.replaceChildren();
+      this.clearInterrupt();
+      return false;
     }
-    if (conv.pending) {
-      this.pending = conv.pending;
-      this.renderInterruptChips(conv.pending, /* restore */ true);
-    }
-    this.autoscroll();
-    return true;
   }
 
   // --- conversation control ---
   private resetConversation(): void {
+    this.cancelStream(); // an in-flight turn must not write into the cleared log
     clearConversation(this.opts.botId);
     this.sessionId = null;
     this.pending = null;
@@ -241,6 +261,7 @@ export class WolkeWidget {
   }
 
   private submitDraft(): void {
+    if (this.streaming) return; // keep the draft; a turn is already running
     const text = this.dom.input.value.trim();
     if (!text) return;
     this.dom.input.value = "";
@@ -257,13 +278,14 @@ export class WolkeWidget {
   }
 
   private sendMessage(text: string): void {
+    if (this.streaming) return; // starter chips stay clickable mid-stream — gate here
     this.hideStarters();
     this.appendUser(text);
     void this.runTurn({ session_id: this.sessionId ?? undefined, message: text });
   }
 
   private sendChoice(id: string): void {
-    if (!this.pending) return;
+    if (!this.pending || this.streaming) return;
     const replyTo = this.pending.replyTo;
     this.clearInterrupt();
     void this.runTurn({ session_id: this.sessionId ?? undefined, choice: { id }, reply_to: replyTo });
@@ -293,31 +315,54 @@ export class WolkeWidget {
     this.lastRequest = body;
     this.showTyping();
     this.disableSendWhileStreaming(true);
+    const controller = new AbortController();
+    this.abortCtl = controller;
+    this.streaming = true;
 
     const headers: Record<string, string> = {};
     const token = this.opts.getToken ? await this.opts.getToken() : null;
     if (token) headers["authorization"] = `Bearer ${token}`;
 
     const url = `${this.baseUrl}/api/v1/bots/${this.opts.botId}/chat`;
-    await streamChat(url, body, headers, {
-      onEvent: (ev) => this.handleEvent(ev),
-      onTransportDrop: () => {
-        this.clearTyping();
-        this.showError(this.s.connectionLost, !isResume);
-        this.disableSendWhileStreaming(false);
-      },
-      onPreStreamError: (_status, err) => {
-        this.clearTyping();
-        this.disableSendWhileStreaming(false);
-        // token_expired: ask the host for a fresh token (getToken is re-invoked) and
-        // retry the SAME turn once (docs/01: recoverable, "host should refresh + retry").
-        if (err.code === "token_expired" && this.opts.getToken && !authRetry) {
-          void this.runTurn(partial, true);
-          return;
-        }
-        this.showError(err.message || this.s.connectionLost, err.recoverable ?? false);
-      },
-    });
+    try {
+      await streamChat(
+        url, body, headers,
+        {
+          onEvent: (ev) => this.handleEvent(ev),
+          onTransportDrop: () => {
+            if (controller.signal.aborted) return; // deliberate cancel — not an error
+            this.clearTyping();
+            this.showError(this.s.connectionLost, !isResume);
+            this.disableSendWhileStreaming(false);
+          },
+          onPreStreamError: (_status, err) => {
+            this.clearTyping();
+            this.disableSendWhileStreaming(false);
+            // token_expired: ask the host for a fresh token (getToken is re-invoked) and
+            // retry the SAME turn once (docs/01: recoverable, "host should refresh + retry").
+            if (err.code === "token_expired" && this.opts.getToken && !authRetry) {
+              void this.runTurn(partial, true);
+              return;
+            }
+            this.showError(err.message || this.s.connectionLost, err.recoverable ?? false);
+          },
+        },
+        controller.signal,
+      );
+    } finally {
+      // The token-refresh retry above re-enters runTurn and installs ITS controller
+      // before this finally runs — only release the flags if they are still ours.
+      if (this.abortCtl === controller) {
+        this.abortCtl = null;
+        this.streaming = false;
+      }
+    }
+  }
+
+  private cancelStream(): void {
+    this.abortCtl?.abort();
+    this.abortCtl = null;
+    this.streaming = false;
   }
 
   private handleEvent(ev: ServerEvent): void {
@@ -572,14 +617,16 @@ export class WolkeWidget {
   }
 
   private retry(): void {
-    if (!this.lastRequest) return;
+    if (!this.lastRequest || this.streaming) return;
     this.hideError();
     void this.runTurn(this.lastRequest);
   }
 
   dispose(): void {
+    this.cancelStream();
     this.announcer.dispose();
     this.releaseTrap?.();
     this.unwatchScheme?.();
+    if (!this.opts.mount) this.hostEl.remove(); // detach the auto-created host
   }
 }
