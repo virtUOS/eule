@@ -1,7 +1,7 @@
 # Gateway image — FastAPI SSE gateway (docs/07-deployment.md).
 # Config is NOT baked in: it is mounted at /config (CONFIG_DIR) so config changes are a
 # restart, not a rebuild. Secrets arrive via env (*_env references), never in the image.
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # uv for fast, reproducible installs.
 RUN pip install --no-cache-dir uv
