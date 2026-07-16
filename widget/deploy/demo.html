@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>eule — widget showcase</title>
+    <style>
+      /* Observation deck: a control deck drives a live "stage" where the widget runs;
+         the embed snippet mirrors the deck so you copy exactly what you configured.
+         Monospace = the instrument voice; maroon = brand, amber = active state. */
+      :root {
+        --paper: #faf7f2; --surface: #ffffff; --ink: #1f1a24; --muted: #6b6470;
+        --line: #e7e1d8; --brand: #a6093d; --brand-ink: #ffffff; --amber: #9c6b1f;
+        --amber-soft: #f3e7cf; --radius: 12px;
+        --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      @media (prefers-color-scheme: dark) { :root:not([data-theme]) {
+        --paper: #17131c; --surface: #211b28; --ink: #f3eee9; --muted: #a89fb0;
+        --line: #322a3a; --brand: #d95c7d; --brand-ink: #1a1017; --amber: #d9a441;
+        --amber-soft: #33291a;
+      } }
+      :root[data-theme="dark"] {
+        --paper: #17131c; --surface: #211b28; --ink: #f3eee9; --muted: #a89fb0;
+        --line: #322a3a; --brand: #d95c7d; --brand-ink: #1a1017; --amber: #d9a441;
+        --amber-soft: #33291a;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
+      body {
+        background: var(--paper); color: var(--ink); font-family: var(--sans);
+        line-height: 1.55; -webkit-font-smoothing: antialiased;
+      }
+      .skip {
+        position: absolute; left: -999px; top: 0; z-index: 20;
+        background: var(--brand); color: var(--brand-ink); padding: 10px 16px;
+        border-radius: 0 0 8px 0; font: 600 14px var(--sans); text-decoration: none;
+      }
+      .skip:focus { left: 0; }
+
+      .wrap { max-width: 1080px; margin: 0 auto; padding: clamp(20px, 5vw, 56px) 20px 72px; }
+
+      .eyebrow {
+        font: 600 12px/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase;
+        color: var(--brand); margin: 0 0 14px;
+      }
+      h1 {
+        font-size: clamp(30px, 6vw, 52px); line-height: 1.04; letter-spacing: -0.02em;
+        margin: 0 0 14px; font-weight: 700;
+      }
+      .lede { font-size: clamp(16px, 2.2vw, 19px); color: var(--muted); max-width: 62ch; margin: 0; }
+
+      h2 {
+        font: 600 13px/1 var(--mono); letter-spacing: 0.16em; text-transform: uppercase;
+        color: var(--muted); margin: 0 0 18px; padding-bottom: 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      section { margin-top: clamp(40px, 7vw, 72px); }
+
+      /* --- deck + stage --- */
+      .deck-grid { display: grid; grid-template-columns: minmax(0, 320px) 1fr; gap: 28px; align-items: start; }
+      @media (max-width: 760px) { .deck-grid { grid-template-columns: 1fr; } }
+
+      .deck { display: grid; gap: 20px; }
+      .control { display: grid; gap: 8px; }
+      .control > .lbl {
+        font: 600 11px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase;
+        color: var(--muted);
+      }
+      .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+      .seg button {
+        font: 500 13px/1 var(--mono); color: var(--ink); background: var(--surface);
+        border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px;
+        cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+      }
+      .seg button:hover { border-color: var(--amber); }
+      .seg button[aria-pressed="true"] {
+        background: var(--amber-soft); border-color: var(--amber); color: var(--ink); font-weight: 700;
+      }
+      select {
+        font: 500 14px var(--mono); color: var(--ink); background: var(--surface);
+        border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; width: 100%;
+      }
+
+      .stage {
+        position: relative; min-height: 460px; background: var(--surface);
+        border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+        display: grid;
+      }
+      .stage-mount { min-height: 460px; }
+      .stage-note {
+        margin: auto; max-width: 34ch; text-align: center; padding: 32px 24px; color: var(--muted);
+      }
+      .stage-note strong { color: var(--ink); display: block; margin-bottom: 6px; }
+      .readout {
+        position: absolute; top: 10px; right: 12px; z-index: 2;
+        font: 500 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+        color: var(--muted); background: var(--paper); border: 1px solid var(--line);
+        border-radius: 999px; padding: 5px 10px;
+      }
+      .readout[data-state="live"] { color: var(--amber); border-color: var(--amber); }
+      .readout[data-state="error"] { color: var(--brand); border-color: var(--brand); }
+
+      /* --- embed --- */
+      .embed-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+      .embed-head h2 { margin: 0; border: 0; padding: 0; }
+      .copy {
+        font: 600 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+        color: var(--brand-ink); background: var(--brand); border: 0; border-radius: 8px;
+        padding: 9px 14px; cursor: pointer;
+      }
+      .copy:hover { filter: brightness(1.08); }
+      pre {
+        margin: 0; background: var(--surface); border: 1px solid var(--line);
+        border-radius: var(--radius); padding: 18px 20px; overflow-x: auto;
+        font: 13px/1.7 var(--mono); color: var(--ink); tab-size: 2;
+      }
+      .tok-tag { color: var(--brand); } .tok-attr { color: var(--amber); } .tok-str { color: var(--muted); }
+      .hint { margin: 12px 2px 0; font-size: 14px; color: var(--muted); }
+
+      /* --- docs --- */
+      table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th { font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+      td code, .hint code, p code { font: 13px var(--mono); background: var(--amber-soft); padding: 1px 6px; border-radius: 5px; }
+      td:first-child { white-space: nowrap; }
+
+      a { color: var(--brand); }
+      *:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; border-radius: 4px; }
+      @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#deck">Skip to the controls</a>
+    <div class="wrap">
+      <header>
+        <p class="eyebrow">eule · observation deck</p>
+        <h1>See the assistant in every mode.</h1>
+        <p class="lede">
+          Flip the controls to preview each embedding mode, theme, and language against a
+          live bot. The embed snippet below updates as you go — copy it straight onto your
+          own page.
+        </p>
+      </header>
+
+      <section aria-labelledby="deck-h">
+        <h2 id="deck-h">Live preview</h2>
+        <div class="deck-grid">
+          <div class="deck" id="deck">
+            <div class="control">
+              <label class="lbl" for="bot">Bot</label>
+              <select id="bot">
+                <option value="echo">echo — stub (works without a live model)</option>
+                <option value="assistant">assistant — front door (router)</option>
+                <option value="it-helpdesk">it-helpdesk</option>
+                <option value="campus-search">campus-search</option>
+                <option value="askuos">askuos</option>
+              </select>
+            </div>
+            <div class="control">
+              <span class="lbl" id="mode-l">Embedding mode</span>
+              <div class="seg" role="group" aria-labelledby="mode-l" id="mode">
+                <button data-v="launcher" aria-pressed="true">launcher</button>
+                <button data-v="inline" aria-pressed="false">inline</button>
+                <button data-v="standalone" aria-pressed="false">standalone</button>
+              </div>
+            </div>
+            <div class="control">
+              <span class="lbl" id="theme-l">Theme</span>
+              <div class="seg" role="group" aria-labelledby="theme-l" id="theme">
+                <button data-v="auto" aria-pressed="true">auto</button>
+                <button data-v="light" aria-pressed="false">light</button>
+                <button data-v="dark" aria-pressed="false">dark</button>
+              </div>
+            </div>
+            <div class="control">
+              <span class="lbl" id="lang-l">Language</span>
+              <div class="seg" role="group" aria-labelledby="lang-l" id="lang">
+                <button data-v="de" aria-pressed="true">Deutsch</button>
+                <button data-v="en" aria-pressed="false">English</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage" id="stage">
+            <span class="readout" id="readout" data-state="idle">idle</span>
+            <div class="stage-note" id="stage-note">
+              <strong>Launcher mode</strong>
+              Look for the chat button in the bottom-right corner. ↘
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="embed-h">
+        <div class="embed-head">
+          <h2 id="embed-h">Embed on your site</h2>
+          <button class="copy" id="copy" type="button">Copy</button>
+        </div>
+        <pre id="snippet" aria-live="polite"></pre>
+        <p class="hint">
+          One tag per page. The bot only answers on origins listed in its
+          <code>embedding.allowed_origins</code> — add your site there in the bot config.
+          Full attribute reference: the project <code>README.md</code> (Embedding).
+        </p>
+      </section>
+
+      <section aria-labelledby="docs-h">
+        <h2 id="docs-h">Configure &amp; learn more</h2>
+        <p class="hint" style="margin-top:0">
+          A bot is one YAML file in <code>config/bots/</code> — system prompt, model, and
+          the tools it may call — validated at boot by
+          <code>validate-config</code>. The specs below are the source of truth.
+        </p>
+        <table>
+          <thead><tr><th>Document</th><th>What it covers</th></tr></thead>
+          <tbody>
+            <tr><td><code>README.md</code></td><td>Deployment, configuration, and embedding — start here.</td></tr>
+            <tr><td><code>docs/03-registry.md</code></td><td>Full config schema (global + per-bot) and the validation checks.</td></tr>
+            <tr><td><code>docs/09-adding-a-bot.md</code></td><td>Step-by-step: add a bot (config-only is the default path).</td></tr>
+            <tr><td><code>docs/01-protocol.md</code></td><td>The widget ↔ gateway wire protocol.</td></tr>
+            <tr><td><code>docs/05-accessibility.md</code></td><td>The widget's WCAG 2.1 AA contract.</td></tr>
+            <tr><td><code>docs/00-overview.md</code></td><td>Architecture, tenancy, and the key design decisions.</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+
+    <script src="/widget.js"></script>
+    <script>
+      (function () {
+        var root = document.documentElement;
+        var stage = document.getElementById("stage");
+        var note = document.getElementById("stage-note");
+        var readout = document.getElementById("readout");
+        var snippetEl = document.getElementById("snippet");
+
+        var state = { bot: "echo", mode: "launcher", theme: "auto", lang: "de" };
+        var widget = null, stageMount = null;
+
+        function setReadout(text, kind) {
+          readout.textContent = text;
+          readout.setAttribute("data-state", kind || "idle");
+        }
+
+        // Segmented button groups (mode / theme / language).
+        ["mode", "theme", "lang"].forEach(function (key) {
+          var group = document.getElementById(key);
+          group.addEventListener("click", function (e) {
+            var btn = e.target.closest("button");
+            if (!btn) return;
+            group.querySelectorAll("button").forEach(function (b) {
+              b.setAttribute("aria-pressed", String(b === btn));
+            });
+            state[key === "lang" ? "lang" : key] = btn.dataset.v;
+            apply();
+          });
+        });
+        document.getElementById("bot").addEventListener("change", function (e) {
+          state.bot = e.target.value; apply();
+        });
+
+        function renderSnippet() {
+          var attrs = [["src", location.origin + "/widget.js"], ["data-bot-id", state.bot]];
+          if (state.mode !== "launcher") attrs.push(["data-mode", state.mode]);
+          if (state.theme !== "auto") attrs.push(["data-scheme", state.theme]);
+          if (state.lang !== "de") attrs.push(["data-lang", state.lang]);
+          var lines = attrs.map(function (a, i) {
+            var pad = i === 0 ? "" : "        ";
+            return pad + '<span class="tok-attr">' + a[0] + '</span>=<span class="tok-str">"' + a[1] + '"</span>';
+          });
+          snippetEl.innerHTML =
+            '<span class="tok-tag">&lt;script</span> ' + lines.join("\n") +
+            '<span class="tok-tag">&gt;&lt;/script&gt;</span>';
+        }
+
+        async function apply() {
+          renderSnippet();
+          // Theme the page chrome too, so the widget's light/dark is shown in context.
+          if (state.theme === "auto") root.removeAttribute("data-theme");
+          else root.setAttribute("data-theme", state.theme);
+
+          if (widget) { try { widget.dispose(); } catch (e) {} widget = null; }
+          if (stageMount) { stageMount.remove(); stageMount = null; }
+
+          var opts = { botId: state.bot, mode: state.mode, lang: state.lang };
+          if (state.theme !== "auto") opts.scheme = state.theme;
+
+          if (state.mode === "launcher") {
+            note.hidden = false;
+            note.innerHTML = "<strong>Launcher mode</strong>Look for the chat button in the bottom-right corner. ↘";
+          } else {
+            note.hidden = true;
+            stageMount = document.createElement("div");
+            stageMount.className = "stage-mount";
+            stage.appendChild(stageMount);
+            opts.mount = stageMount;
+          }
+
+          setReadout("mounting…", "idle");
+          try {
+            widget = await window.WolkeWidget.mount(opts);
+            setReadout("live", "live");
+          } catch (err) {
+            setReadout("gateway unreachable", "error");
+            note.hidden = false;
+            note.innerHTML =
+              "<strong>Couldn't reach the gateway</strong>" +
+              "The widget needs the gateway service running (it serves <code>/api</code>). " +
+              "Start the stack, then reload.";
+          }
+        }
+
+        document.getElementById("copy").addEventListener("click", async function () {
+          var btn = this;
+          try {
+            await navigator.clipboard.writeText(snippetEl.textContent);
+            btn.textContent = "Copied";
+          } catch (e) {
+            btn.textContent = "Copy failed";
+          }
+          setTimeout(function () { btn.textContent = "Copy"; }, 1600);
+        });
+
+        apply();
+      })();
+    </script>
+  </body>
+</html>
