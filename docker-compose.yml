@@ -33,6 +33,15 @@ services:
     build: ./widget
     expose:
       - "80"
+    healthcheck:
+      # Checks the ARTIFACT, not just nginx: try_files 404s if widget.js is missing
+      # from the image, so a broken build fails the healthcheck. wget = busybox,
+      # present in nginx:alpine.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/widget.js"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     restart: unless-stopped
 
   caddy:
@@ -50,7 +59,7 @@ services:
       gateway:
         condition: service_healthy   # gateway has a healthcheck; wait for it (no 502s on boot)
       widget:
-        condition: service_started
+        condition: service_healthy   # widget healthcheck fetches /widget.js (artifact check)
     restart: unless-stopped
 
 volumes:
