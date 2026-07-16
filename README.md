@@ -178,7 +178,7 @@ starter_replies:
 |---|---|---|
 | `passthrough` | Streams the model with the conversation; no tools. | A prompted assistant, or a whole bot behind an OpenAI-compatible endpoint. |
 | `tool-agent` | Bounded model-driven tool loop over the allowlisted MCP tools, then a final answer. | Retrieval / lookup bots. |
-| `router` | Menu-first **front door**: shows one option per target, routes to the chosen sub-bot, sticky, with an "other topic" escape. | The "ask us anything" launcher. |
+| `router` | The **front door**: routes to sub-bots, sticky, with an "other topic" escape. Two modes — `menu` (a click selects the lane) or `classifier` (menu stays, but a typed message is auto-routed by a cheap model, menu as fallback). | The "ask us anything" launcher. |
 
 A **front door** is itself just a config-only bot:
 
@@ -186,11 +186,24 @@ A **front door** is itself just a config-only bot:
 id: "assistant"
 graph: "router"
 routes:
+  mode: "classifier"      # or "menu" (default): click-only, no model needed
   targets:
-    - { bot: "it-helpdesk",   label: "IT help" }
-    - { bot: "campus-search", label: "Campus search" }
+    #                       route_hint = the classifier's routing description per
+    #                       target (fallback: the target bot's `description`)
+    - { bot: "it-helpdesk",   label: "IT help",
+        route_hint: "Technical problems: VPN, WiFi, passwords, university email" }
+    - { bot: "campus-search", label: "Campus search",
+        route_hint: "General campus info: opening hours, cafeteria, buildings" }
+model: { provider: "fast-small" }      # classifier mode only: the ROUTER's own
+                                       # provider does the classifying (a cheap/small
+                                       # model from global model_providers is plenty)
 greeting: { mode: "bot_greeting" }     # the menu is the greeting
 ```
+
+In classifier mode a typed message is auto-routed (a click still works, and anything
+the classifier isn't sure about falls back to the menu — the typed question is kept, so
+no retyping after the click). A `context.topic` matching a target id routes
+deterministically without any model call.
 
 Bots with genuinely novel flows (custom interrupts, bespoke retrieval) can instead ship a
 small hand-written fragment in `gateway/app/graphs/` — but that is the exception, not the
@@ -235,10 +248,35 @@ Deploy `widget.js` once; each site references it and is listed in the bot's
 |---|---|
 | `data-bot-id` | **required** — which bot to open |
 | `data-base-url` | gateway origin, if different from the script's origin |
-| `data-mode` | `launcher` (default) · `inline` · `standalone` |
+| `data-mode` | `launcher` (default) · `inline` · `standalone`; unknown values fall back to `launcher` |
+| `data-mount` | CSS selector of the element to render into (inline/standalone) |
+| `data-lang` | UI language, `de` / `en` (default: the page's `<html lang>`, by prefix) |
 | `data-scheme` | force `light` / `dark` (default: follow the OS) |
 | `data-get-token` | name of a global function returning a bearer token (auth bots) |
-| `data-context-page` / `data-context-topic` | non-sensitive page context passed to the bot |
+| `data-context-page` | page attribution sent with every turn; `"auto"` sends the page's origin + path (query string and fragment are **stripped** — they can carry tokens) |
+| `data-context-topic` | topic hint sent with every turn (see routing below) |
+| `data-context-locale` | locale hint for backends with a language field (e.g. askUOS) |
+
+**How the context values route.** The three `data-context-*` values travel as the
+protocol's `context` object on every turn — validated by the gateway against a strict
+key allowlist and size caps, treated as untrusted data, and never able to carry
+identity. What each one does:
+
+- `topic` — steers the **front door**: on a `classifier`-mode router, a topic exactly
+  matching a target bot id routes there deterministically (no model call). So an
+  IT-pages embed can pre-steer `data-context-topic="it-helpdesk"` while the homepage
+  embed lets the classifier/menu decide.
+- `page` — recorded in the per-turn structured log (`eule.turn`) for usage
+  attribution ("which page do questions come from"), never in metrics labels.
+- `locale` — forwarded to Scenario-3 backends whose API takes a language field
+  (`passthrough`'s `locale_body_field`); the widget UI language itself comes from
+  `data-lang`.
+
+**URL query parameters:** the production `widget.js` reads **none** — all
+configuration is via the `data-*` attributes above (or the programmatic
+`WolkeWidget.mount(options)` API). Only the *dev demo page* (`npm run dev`) accepts
+`?mode=…&botId=…&lang=…&theme=…&topic=…&page=…` for manual testing; the shipped
+`/standalone.html` is statically configured.
 
 Pages served from the deployment's own host don't need to allowlist themselves. Details:
 `docs/07-deployment.md`.

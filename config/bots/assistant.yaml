@@ -21,8 +21,9 @@ routes:
     - { bot: "campus-search", label: "Campus-Suche" }
 
 model:
-  provider: "fast-small"        # unused by the menu router; reserved for v2
-                                # classifier routing
+  provider: "fast-small"        # used ONLY by routes.mode: "classifier" (step 12) —
+                                # flip mode + this provider does the routing. Unused
+                                # in menu mode; menu until a live cheap model exists.
 
 requires_auth: false            # public router → public targets only (check 11)
 
