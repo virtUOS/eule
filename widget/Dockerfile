@@ -1,7 +1,7 @@
 # Widget image — builds the single self-contained widget.js and serves it as static
 # files (docs/07-deployment.md). Decoupled from the gateway and the proxy: it can be
 # swapped for a self-hosted S3/object store later with no gateway change.
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /w
 COPY package.json package-lock.json ./
 RUN npm ci
