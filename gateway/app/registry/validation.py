@@ -136,11 +136,13 @@ def check_all(
         # 10–12. Router checks.
         if bot.routes is not None:
             # 12. mode ∈ {menu} for v1.
-            if bot.routes.mode != "menu":
+            if bot.routes.mode not in ("menu", "classifier"):
                 errors.append(
                     f"check 12: {where}: routes.mode '{bot.routes.mode}' unsupported "
-                    f"(v1 allows only 'menu')"
+                    f"(allowed: 'menu', 'classifier')"
                 )
+            # classifier mode uses the router's own model.provider for classification;
+            # its existence is already guaranteed by check 1 (every bot's provider).
             for tgt in bot.routes.targets:
                 # 10. target exists, enabled, not self.
                 if tgt.bot == bot.id:

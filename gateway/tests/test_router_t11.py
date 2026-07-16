@@ -319,6 +319,146 @@ async def test_router_invalid_menu_reply_reshows_menu_not_error(sessions):
     assert events[-1]["data"]["status"] == "awaiting_input"
 
 
+# --- Step 12: classifier routing ----------------------------------------------
+
+from .test_metrics_step11 import sample  # noqa: E402
+from .test_tool_agent import _ScriptedPicker  # noqa: E402  (generate-only scripted fake)
+
+
+class _RaisingClassifier(_ScriptedPicker):
+    def _generate(self, *args, **kwargs):  # type: ignore[override]
+        self.calls += 1
+        raise RuntimeError("model down")
+
+
+def _classifier_cfg(targets, **overrides):
+    return _router_cfg(targets, routes={"mode": "classifier", "sticky": True, "targets": targets}, **overrides)
+
+
+def _classifier_app(cfg, fragments, classifier, sessions):
+    fragment = build_router_fragment(
+        cfg, Registry(make_global(), {}), subgraph_fragments=fragments, classifier_model=classifier,
+    )
+    graph = build_bot_graph(cfg, [], fragment, sessions.checkpointer)
+    reg = Registry(make_global(), {cfg.id: cfg})
+    return create_app(reg, sessions=sessions, graphs=_StubGraphs(graph))
+
+
+async def test_classifier_types_at_menu_routes_and_answers_in_one_turn(sessions):
+    cfg = _classifier_cfg(TWO_TARGETS)
+    classifier = _ScriptedPicker(responses=[AIMessage(content="bot-a")])
+    app = _classifier_app(cfg, {"bot-a": _canned_bot("Answer from A."), "bot-b": _canned_bot("Answer from B.")}, classifier, sessions)
+
+    events, _ = await _drive(app, {"greeting": True})
+    sid = events[0]["data"]["session_id"]
+    [menu] = _quick_replies(events)
+    assert menu["allow_free_text"] is True  # classifier mode: typing is allowed
+
+    # typing instead of clicking → classified → routed → answered, ONE turn
+    events, _ = await _drive(
+        app, {"session_id": sid, "choice": {"id": None, "text": "my vpn is broken"}, "reply_to": menu["reply_to"]}
+    )
+    assert classifier.calls == 1
+    assert _text(events) == "Answer from A."
+    statuses = [e["data"]["label"] for e in events if e["data"]["type"] == "status"]
+    assert any("→ Bot A" in s for s in statuses)  # routed-lane transparency
+    [handoff] = _quick_replies(events)  # lands in the normal sticky loop
+    assert [o["id"] for o in handoff["options"]] == [MENU_CHOICE]
+
+
+async def test_classifier_none_falls_back_to_menu_and_click_needs_no_retype(sessions):
+    cfg = _classifier_cfg(TWO_TARGETS)
+    classifier = _ScriptedPicker(responses=[AIMessage(content="none")])
+    app = _classifier_app(cfg, {"bot-a": _canned_bot("Answer from A."), "bot-b": _canned_bot("Answer from B.")}, classifier, sessions)
+
+    events, _ = await _drive(app, {"greeting": True})
+    sid = events[0]["data"]["session_id"]
+    [menu] = _quick_replies(events)
+
+    none_before = sample("router_classifier_outcomes_total", {"router_bot": "assistant", "outcome": "none"})
+    events, _ = await _drive(
+        app, {"session_id": sid, "choice": {"id": None, "text": "hard to classify"}, "reply_to": menu["reply_to"]}
+    )
+    assert not [e for e in events if e["data"]["type"] == "text"]  # no answer yet
+    [menu2] = _quick_replies(events)  # menu re-shown
+    assert [o["id"] for o in menu2["options"]] == ["bot-a", "bot-b"]
+    assert sample("router_classifier_outcomes_total", {"router_bot": "assistant", "outcome": "none"}) == none_before + 1
+
+    # clicking now consumes the KEPT question — the sub-bot answers with no retyping
+    events, _ = await _drive(app, {"session_id": sid, "choice": {"id": "bot-b"}, "reply_to": menu2["reply_to"]})
+    assert _text(events) == "Answer from B."
+
+
+async def test_classifier_garbage_and_exception_fall_back_to_menu(sessions):
+    cfg = _classifier_cfg(TWO_TARGETS)
+    fragments = {"bot-a": _canned_bot("A."), "bot-b": _canned_bot("B.")}
+
+    # garbage token → unparseable → menu
+    garbage = _ScriptedPicker(responses=[AIMessage(content="I think bot-a would be great!?")])
+    app = _classifier_app(cfg, fragments, garbage, sessions)
+    events, _ = await _drive(app, {"greeting": True})
+    sid = events[0]["data"]["session_id"]
+    [menu] = _quick_replies(events)
+    before = sample("router_classifier_outcomes_total", {"router_bot": "assistant", "outcome": "unparseable"})
+    events, _ = await _drive(
+        app, {"session_id": sid, "choice": {"id": None, "text": "q"}, "reply_to": menu["reply_to"]}
+    )
+    assert _quick_replies(events)[0]["options"][0]["id"] == "bot-a"  # menu again
+    assert sample("router_classifier_outcomes_total", {"router_bot": "assistant", "outcome": "unparseable"}) == before + 1
+
+    # model exception → error outcome → menu, never internal_error
+    raising = _RaisingClassifier(responses=[AIMessage(content="unused")])
+    sessions2 = type(sessions)(clock=lambda: 0.0, id_factory=iter(["s1", "s2", "s3"]).__next__)
+    app2 = _classifier_app(cfg, fragments, raising, sessions2)
+    events, _ = await _drive(app2, {"greeting": True})
+    sid2 = events[0]["data"]["session_id"]
+    [menu2] = _quick_replies(events)
+    err_before = sample("router_classifier_outcomes_total", {"router_bot": "assistant", "outcome": "error"})
+    events, _ = await _drive(
+        app2, {"session_id": sid2, "choice": {"id": None, "text": "q"}, "reply_to": menu2["reply_to"]}
+    )
+    assert not [e for e in events if e["data"]["type"] == "error"]
+    assert _quick_replies(events)  # menu re-shown
+    assert sample("router_classifier_outcomes_total", {"router_bot": "assistant", "outcome": "error"}) == err_before + 1
+
+
+async def test_context_topic_shortcut_routes_without_model_call(sessions):
+    cfg = _classifier_cfg(TWO_TARGETS)
+    classifier = _ScriptedPicker(responses=[AIMessage(content="never-consulted")])
+    app = _classifier_app(cfg, {"bot-a": _canned_bot("Answer from A."), "bot-b": _canned_bot("B.")}, classifier, sessions)
+
+    ctx_before = sample("router_choices_total", {"router_bot": "assistant", "target": "bot-a", "method": "context"})
+    # a FRESH message turn (no session) carrying the step-8 topic hint
+    events, _ = await _drive(app, {"message": "when is it open?", "context": {"topic": "bot-a"}})
+    assert classifier.calls == 0  # deterministic rung: zero model calls
+    assert _text(events) == "Answer from A."
+    assert sample("router_choices_total", {"router_bot": "assistant", "target": "bot-a", "method": "context"}) == ctx_before + 1
+
+
+async def test_fresh_typed_message_is_classified_directly(sessions):
+    """No greeting, no menu: a first-contact typed message routes in one turn."""
+    cfg = _classifier_cfg(TWO_TARGETS)
+    classifier = _ScriptedPicker(responses=[AIMessage(content="bot-b")])
+    app = _classifier_app(cfg, {"bot-a": _canned_bot("A."), "bot-b": _canned_bot("Answer from B.")}, classifier, sessions)
+
+    events, _ = await _drive(app, {"message": "study question"})
+    assert classifier.calls == 1
+    assert _text(events) == "Answer from B."
+    [handoff] = _quick_replies(events)
+    assert [o["id"] for o in handoff["options"]] == [MENU_CHOICE]
+
+
+async def test_greeting_with_topic_skips_menu_to_handoff(sessions):
+    cfg = _classifier_cfg(TWO_TARGETS)
+    classifier = _ScriptedPicker(responses=[AIMessage(content="unused")])
+    app = _classifier_app(cfg, {"bot-a": _canned_bot("A."), "bot-b": _canned_bot("B.")}, classifier, sessions)
+
+    events, _ = await _drive(app, {"greeting": True, "context": {"topic": "bot-b"}})
+    assert classifier.calls == 0
+    [handoff] = _quick_replies(events)  # not the menu: straight to "what's your question?"
+    assert [o["id"] for o in handoff["options"]] == [MENU_CHOICE]
+
+
 # --- 9c validation rules -----------------------------------------------------
 
 def test_router_requires_routes_and_routes_require_router():

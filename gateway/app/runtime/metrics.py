@@ -71,8 +71,14 @@ SESSION_TURNS = Histogram(
 )
 GUARD_VERDICTS = Counter("guard_verdicts_total", "Guard scope verdicts", ["bot", "verdict"])
 ROUTER_CHOICES = Counter(
-    "router_choices_total", "Front-door menu choices (incl. the __menu__ escape)",
-    ["router_bot", "target"],
+    "router_choices_total",
+    "Front-door routing decisions (incl. the __menu__ escape) by method",
+    ["router_bot", "target", "method"],  # method: menu | classifier | context
+)
+ROUTER_CLASSIFIER = Counter(
+    "router_classifier_outcomes_total",
+    "Classifier-routing outcomes (step 12); the non-routed share = menu-fallback rate",
+    ["router_bot", "outcome"],  # routed | none | unparseable | error
 )
 INTERRUPT_REPLIES = Counter(
     "interrupt_replies_total", "Interrupt resumes by reply kind", ["bot", "kind"]

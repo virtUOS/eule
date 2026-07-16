@@ -149,9 +149,16 @@ orchestrator is config-only; see `docs/09`):
 - Build each sub-bot's fragment **from its own config** once; the router `add_node`s
   each as a compiled subgraph (no checkpointer — it persists through the parent's
   composite checkpoint). Node names are `bot_<id>` (`:` is reserved in LangGraph).
-- **Menu-first (v1):** the entry node interrupts with `ask_quick_replies`, one option
-  per `routes.targets[]`, `allow_free_text=False` (classifier routing is v2). The
-  chosen id selects the subgraph.
+- **Menu-first (default):** the entry node interrupts with `ask_quick_replies`, one
+  option per `routes.targets[]`, `allow_free_text=False`. The chosen id selects the
+  subgraph.
+- **Classifier mode (`routes.mode: "classifier"`, step 12):** the menu stays but
+  free text is allowed; a typed message is routed by the ladder `context.topic`
+  exact-match (deterministic) → one cheap-model call (exact token from
+  {target ids…, none}, TAG_NOSTREAM, latest message only) → menu fallback with the
+  typed question KEPT in history (a subsequent click needs no retyping). A `dispatch`
+  entry node classifies fresh typed turns directly. Misrouting is not a scope breach
+  (per-sub-bot allowlists, T11.6) and check 11 keeps every target auth-compatible.
 - **Handoff:** after a choice, a `handoff` node interrupts to ask for the question
   (free text allowed) and carries the "ask about something else" escape option
   (reserved id `__menu__`) back to the menu. Every routed answer returns to

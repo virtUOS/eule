@@ -22,6 +22,9 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started
   door confirmed → 5b moved to 9c, Step 5 deferred, Step 6 dissolved (2026-07-15).
 - ✅ **Step 11** — metrics (`/metrics` Prometheus) + structured per-turn log; pulled
   forward from Later/v2, specced + built 2026-07-16.
+- ✅ **Step 12** — classifier routing for the front door (`routes.mode: classifier`,
+  menu stays as fallback); specced + built 2026-07-16. `assistant.yaml` stays
+  `mode: "menu"` until a live cheap model exists (runtime-gated like the guard).
 
 Verified across the done steps: gateway `pytest` + `mypy --strict` + `validate-config`;
 widget Vitest + Playwright(axe) + `tsc --strict`. Work is committed on `main`.
@@ -387,9 +390,67 @@ repo scope); per-user anything (never).
 exposition); per-turn log line shape test; TTFT/duration observed over the wire
 with fake bots; conformance suite unaffected.
 
+## Step 12 — Classifier routing for the front door  ✅ (planned + built 2026-07-16;
+pulled forward from Later/v2; live use needs a cheap model, like the guard)
+
+`routes.mode: "classifier"` — keep the menu, allow typing: the menu chips stay (with
+`allow_free_text: true`), a CLICK routes exactly as today, a TYPED message is
+classified onto a target by a cheap model, with the menu as the universal fallback.
+The classifier is a convenience layer ON TOP of menu routing, never a replacement.
+
+**Safety argument (why a model may route)**
+- Misrouting ≠ scope breach: every sub-bot is composed from ITS OWN config; tool
+  allowlists survive routing unchanged (T11.6). Worst case = a lane the user could
+  have clicked into anyway; the escape chip is one tap away.
+- Injection is self-inflicted only: "route me to X" routes THAT user to a public
+  target they could reach via the menu. Check 11 already guarantees every target is
+  auth-compatible with the router — there is nothing to escalate to.
+- Guard-grade hardening: classify ONLY the latest message; TAG_NOSTREAM (verdict
+  tokens never reach the text stream); EXACT-token match against the closed set
+  {target ids…, none}; any non-conforming output → menu (fail-safe = show the menu).
+
+**Routing decision ladder** (cheapest first, when a typed message arrives with no
+sticky route):
+1. `context.topic` shortcut — exact match on a target id (or configured alias) →
+   deterministic route, zero model calls (finally consumes the step-8 topic hint;
+   embeds can pre-steer the front door).
+2. Classifier — one cheap-model call (the router's `model.provider`, reserved for
+   exactly this since 9c): prompt = one line per target (id + routing description) +
+   the user's message → exactly one token from {ids…, none}.
+3. Menu fallback — `none` / unparseable / model error → re-show the menu with the
+   typed message KEPT in history (after the click, the sub-bot still sees the
+   question — no retyping).
+
+**Flow** (stock router fragment only — no gateway change; docs/01: "routing needs no
+protocol change"): menu interrupt gains free text in classifier mode; during
+classification emit `status("thinking", "Finde den passenden Assistenten…")`
+(localized via graph_params); on success emit a brief routed-lane status ("→ <label>",
+transparency decision 2026-07-16), set `scratch["route"]`, append the HumanMessage,
+enter the subgraph — first answer with zero extra interaction. Sticky/handoff/escape
+untouched; mid-conversation RE-routing stays in Later/v2.
+
+**Config (additive)**
+- `RouteTarget.route_hint` (optional) — the classifier's per-target description;
+  fallback = the target bot's `description` (same field the guard uses).
+- Check 12 extends to `menu|classifier`; new invariant: `mode: classifier` ⇒ the
+  router's `model.provider` resolves (mirrors guard check 6). graph_params gains the
+  localized classifier strings.
+
+**Observability (rides on step 11)**
+- `router_choices_total` gains `method` label: `menu|classifier|context` (closed set).
+- `router_classifier_outcomes_total{router_bot, outcome=routed|none|unparseable|error}`
+  → fallback rate. Quality loop: escape-rate after classifier-routed turns vs.
+  menu-routed turns = the misclassification proxy → tune `route_hint`s.
+
+**Gate (T11 extension, scripted fake classifier like the guard tests):** correct token
+routes + answers in one turn · none/garbage/exception → menu with question preserved ·
+injection routes at-worst to a valid target · `context.topic` shortcut bypasses the
+model (zero classifier calls) · sticky/escape/T11.6 unchanged · check-12/provider
+validation · conformance auto-covers. `assistant.yaml` stays `mode: "menu"` until a
+live cheap model exists (runtime infra-gated like the guard; fully buildable against
+fakes now).
+
 ## Later / v2 (do not build now)
-- Free-text classifier routing fallback (`routes.mode: classifier`) with a cheap model
-  + "finding the right assistant…" status. Menu-first ships in v1.
 - Dynamic mid-conversation re-routing (topic switch detection).
 - Forms: additive `form` event + widget + a11y, when a concrete bot needs structured
   multi-field input.

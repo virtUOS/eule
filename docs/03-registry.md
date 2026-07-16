@@ -210,7 +210,15 @@ observability:
 ### Orchestrator ("front door") bot
 
 An orchestrator is a bot with a `routes` block. Its graph fragment composes the listed
-bots' fragments as subgraphs (see `04-node-contract.md`). Menu-first in v1.
+bots' fragments as subgraphs (see `04-node-contract.md`).
+
+`routes.mode` (check 12): `"menu"` (default — a click selects the lane) or
+`"classifier"` (step 12 — the menu stays with free text allowed; a typed message is
+classified onto a target by the router's own `model.provider`, menu as fallback).
+In classifier mode each target may carry a `route_hint:` — the classifier's routing
+description for that target (fallback: the target bot's `description`, then its
+`label`). A `context.topic` exactly matching a target id routes deterministically
+without a model call.
 
 ```yaml
 version: 1

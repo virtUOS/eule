@@ -139,11 +139,12 @@ def test_check11():
     assert not [e for e in errs([auth_router, authbot], gcfg=auth_global) if "check 11" in e]
 
 
-# 12 — routes.mode ∈ {menu} for v1
+# 12 — routes.mode ∈ {menu, classifier} (classifier added in step 12)
 def test_check12():
-    ok = make_bot(id="assistant", routes={"mode": "menu", "targets": []})
-    assert not [e for e in errs([ok]) if "check 12" in e]
-    bad = make_bot(id="assistant", routes={"mode": "classifier", "targets": []})
+    for mode in ("menu", "classifier"):
+        ok = make_bot(id="assistant", routes={"mode": mode, "targets": []})
+        assert not [e for e in errs([ok]) if "check 12" in e], mode
+    bad = make_bot(id="assistant", routes={"mode": "telepathy", "targets": []})
     assert [e for e in errs([bad]) if "check 12" in e]
 
 

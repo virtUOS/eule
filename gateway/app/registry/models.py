@@ -173,6 +173,9 @@ class RouteTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
     bot: str
     label: str
+    # Classifier-mode routing description for this target (step 12). Fallback: the
+    # target bot's `description` (the same field the guard classifier uses).
+    route_hint: str | None = None
 
 
 class RoutesCfg(BaseModel):
