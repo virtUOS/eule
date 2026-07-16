@@ -37,6 +37,12 @@ mcp_servers:
 
 # Keycloak OIDC — required once any bot sets requires_auth (validation check 5).
 # These are deployment config (issuer/JWKS URL/audience), not secrets.
+# Reverse-proxy trust: X-Forwarded-For is honored (rightmost hop) ONLY when true.
+# The compose deployment fronts the gateway with Caddy, so true here; set false if
+# the gateway is ever exposed directly (a forged XFF would bypass rate limits).
+network:
+  trust_forwarded_for: true
+
 auth:
   issuer: "https://sso.uni-osnabrueck.de/realms/university"
   jwks_url: "https://sso.uni-osnabrueck.de/realms/university/protocol/openid-connect/certs"

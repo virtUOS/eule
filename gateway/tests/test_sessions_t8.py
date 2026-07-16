@@ -118,3 +118,48 @@ async def test_t8_2_restart_drops_sessions(registry):
         events, _ = await collect(c2, "echo", {"session_id": sid, "message": "resume?"})
         assert "session_not_found" in [e["data"].get("code") for e in events]
         assert events[-1]["data"]["status"] == "error"
+
+
+# --- Sweep (review batch 3): expired sessions + their checkpoints are GC'd --
+
+def test_sweep_deletes_checkpointer_threads(fake_clock):
+    """Evicting a Session dict entry alone would leak the (much larger) MemorySaver
+    thread — the full message history. Sweep must delete both."""
+    deleted: list[str] = []
+
+    class _FakeCheckpointer:
+        def delete_thread(self, thread_id: str) -> None:
+            deleted.append(thread_id)
+
+    s = Sessions(clock=fake_clock, id_factory=iter(["a", "b"]).__next__)
+    s.checkpointer = _FakeCheckpointer()
+    s.new("echo", ttl_s=10)
+    s.new("echo", ttl_s=100)  # stays alive
+    fake_clock.advance(11)
+    assert s.sweep() == 1
+    assert deleted == ["a"]
+    assert s.count() == 1
+
+
+async def test_sweep_loop_runs_periodically_and_cancels_cleanly():
+    import asyncio
+
+    from app.main import _sweep_loop
+
+    calls: list[str] = []
+
+    class _S:
+        def sweep(self) -> int:
+            calls.append("sessions")
+            return 0
+
+    class _R:
+        def sweep(self) -> int:
+            calls.append("limiter")
+            return 0
+
+    task = asyncio.create_task(_sweep_loop(_S(), _R(), 0.01))
+    await asyncio.sleep(0.06)
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    assert "sessions" in calls and "limiter" in calls

@@ -26,6 +26,15 @@ VALID_ENV = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _valid_env(monkeypatch):
+    """Graph prewarm (create_app) resolves provider keys from os.environ at build
+    time; in production validation check 3 guarantees they exist. Mirror that here
+    so tests building real graphs resolve the same test values as VALID_ENV."""
+    for key, value in VALID_ENV.items():
+        monkeypatch.setenv(key, value)
+
+
 class FakeClock:
     def __init__(self, start: float = 1000.0) -> None:
         self.t = start

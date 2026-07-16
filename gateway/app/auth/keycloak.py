@@ -80,7 +80,9 @@ class AuthVerifier:
         if self._key_resolver is not None:
             return self._key_resolver(token)
         if self._jwks is None:
-            self._jwks = jwt.PyJWKClient(self._cfg.jwks_url)
+            # Bounded fetch: without a timeout a hung IdP holds the (to_thread'd)
+            # verification worker indefinitely. Keys are cached by PyJWKClient.
+            self._jwks = jwt.PyJWKClient(self._cfg.jwks_url, timeout=5)
         return self._jwks.get_signing_key_from_jwt(token).key
 
     def verify(self, token: str, identity_cfg: IdentityCfg) -> Identity:

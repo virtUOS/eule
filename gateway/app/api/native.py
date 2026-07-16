@@ -10,6 +10,7 @@ matching CORS headers, and requests are rate-limited per (bot, client).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from typing import Any
@@ -102,10 +103,15 @@ def _cors_headers(origin: str | None, cfg: BotCfg) -> tuple[bool, dict[str, str]
     return False, {}
 
 
-def _client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()
+def _client_ip(request: Request, trust_forwarded_for: bool) -> str:
+    """Rate-limit key source. X-Forwarded-For is client-forgeable, so it is honored
+    ONLY when config says a trusted proxy fronts the gateway — and then the RIGHTMOST
+    entry is used (the hop appended by OUR proxy); the leftmost entries are whatever
+    the client sent and would allow limit bypass / victim-budget exhaustion."""
+    if trust_forwarded_for:
+        fwd = request.headers.get("x-forwarded-for")
+        if fwd:
+            return fwd.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"
 
 
@@ -181,7 +187,10 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
             return _error_response(401, "unauthorized", "Authentication required.", headers=cors)
         try:
             assert cfg.identity is not None  # guaranteed by validation check 5
-            identity = verifier.verify(token, cfg.identity)
+            # Off the event loop: on a cold cache / key rotation, verify() does a
+            # synchronous JWKS HTTP fetch — inline it would stall EVERY stream for
+            # every bot while a slow/hung IdP times out.
+            identity = await asyncio.to_thread(verifier.verify, token, cfg.identity)
         except AuthError as e:
             return _error_response(e.status, e.code, e.message, recoverable=e.recoverable, headers=cors)
 
@@ -191,7 +200,8 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
         rl_key = f"{bot_id}:sub:{identity.subject}"
     else:
         tier = cfg.rate_limit.anonymous
-        rl_key = f"{bot_id}:ip:{_client_ip(request)}"
+        trust_xff = registry.global_cfg.network.trust_forwarded_for
+        rl_key = f"{bot_id}:ip:{_client_ip(request, trust_xff)}"
     if tier is not None:
         retry_after = ratelimiter.check(
             rl_key, per_min=tier.requests_per_min, per_day=tier.requests_per_day

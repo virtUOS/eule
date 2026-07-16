@@ -52,6 +52,13 @@ mcp_servers:
                                                 # every tool call (docs/04 §7): this is
                                                 # "may we connect", not "whose data".
 
+# Reverse-proxy trust. X-Forwarded-For is client-forgeable: it is honored (RIGHTMOST
+# hop — the one appended by YOUR proxy) only when true. Default false (secure). Set
+# true only when a trusted reverse proxy (the compose Caddy) fronts every request;
+# otherwise anonymous rate limits key on the direct peer address.
+network:
+  trust_forwarded_for: true
+
 auth:
   issuer: "https://sso.uni.edu/realms/university"
   jwks_url: "https://sso.uni.edu/realms/university/protocol/openid-connect/certs"

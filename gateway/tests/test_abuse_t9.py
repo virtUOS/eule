@@ -101,3 +101,61 @@ async def test_t9_2_window_resets(rated, fake_clock: FakeClock):
         ok = await client.post(CHAT, json={"message": "hi"})
         assert ok.status_code == 200
         await ok.aread()
+
+
+# --- T9.2b — X-Forwarded-For trust policy (review batch 3) ------------------
+
+def _one_per_min_app(fake_clock: FakeClock, *, trust_xff: bool):
+    gcfg = make_global(**({"network": {"trust_forwarded_for": True}} if trust_xff else {}))
+    bot = make_bot(id="echo", rate_limit={"anonymous": {"requests_per_min": 1}})
+    registry = Registry(gcfg, {"echo": bot})
+    sessions = Sessions(clock=fake_clock)
+    app = create_app(
+        registry, sessions=sessions, graphs=GraphCache(registry, sessions),
+        ratelimiter=RL(clock=fake_clock),
+    )
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+
+async def test_t9_2b_forged_xff_ignored_without_trusted_proxy(fake_clock):
+    """Default (no trusted proxy): X-Forwarded-For is client-forgeable and must not
+    mint fresh rate-limit buckets — rotating fake IPs must NOT bypass the limit."""
+    async with _one_per_min_app(fake_clock, trust_xff=False) as client:
+        r1 = await client.post(CHAT, json={"message": "hi"}, headers={"x-forwarded-for": "1.1.1.1"})
+        assert r1.status_code == 200
+        await r1.aread()
+        r2 = await client.post(CHAT, json={"message": "hi"}, headers={"x-forwarded-for": "2.2.2.2"})
+        assert r2.status_code == 429  # same real peer → same bucket, spoof ignored
+
+
+async def test_t9_2b_rightmost_hop_used_behind_trusted_proxy(fake_clock):
+    """Behind a trusted proxy the RIGHTMOST entry (appended by OUR proxy) keys the
+    bucket; the client-authored leftmost entries are ignored — so an attacker can
+    neither escape their own bucket nor exhaust a victim's."""
+    async with _one_per_min_app(fake_clock, trust_xff=True) as client:
+        r1 = await client.post(
+            CHAT, json={"message": "hi"}, headers={"x-forwarded-for": "9.9.9.9, 1.1.1.1"}
+        )
+        assert r1.status_code == 200
+        await r1.aread()
+        # same real client, different forged leftmost → SAME bucket → limited
+        r2 = await client.post(
+            CHAT, json={"message": "hi"}, headers={"x-forwarded-for": "8.8.8.8, 1.1.1.1"}
+        )
+        assert r2.status_code == 429
+        # a different real client gets its own bucket
+        r3 = await client.post(
+            CHAT, json={"message": "hi"}, headers={"x-forwarded-for": "9.9.9.9, 2.2.2.2"}
+        )
+        assert r3.status_code == 200
+        await r3.aread()
+
+
+def test_ratelimiter_sweep_drops_expired_windows(fake_clock):
+    rl = RL(clock=fake_clock)
+    rl.check("a", per_min=10, per_day=None)
+    rl.check("b", per_min=10, per_day=100)  # day window outlives the minute one
+    fake_clock.advance(61)
+    swept = rl.sweep()
+    assert swept == 2  # both minute windows expired ('a' min + 'b' min)
+    rl.check("a", per_min=10, per_day=None)  # still functional after GC

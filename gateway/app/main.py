@@ -7,9 +7,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncIterator
 
 from fastapi import FastAPI
 
@@ -21,6 +23,18 @@ from .registry.registry import Registry
 from .runtime.ratelimit import RateLimiter
 from .runtime.sessions import Sessions
 
+SWEEP_INTERVAL_S = 60.0
+
+
+async def _sweep_loop(sessions: Sessions, ratelimiter: RateLimiter, interval_s: float) -> None:
+    """Periodic GC: expired sessions (incl. their checkpointer threads) and expired
+    rate-limit windows. Without this, both stores grow unboundedly — sessions are
+    minted per request-with-bad-id and limiter keys are client-mintable (per-IP)."""
+    while True:
+        await asyncio.sleep(interval_s)
+        sessions.sweep()
+        ratelimiter.sweep()
+
 
 def create_app(
     registry: Registry,
@@ -31,11 +45,30 @@ def create_app(
 ) -> FastAPI:
     sessions = sessions or Sessions()
     graphs = graphs or GraphCache(registry, sessions)
-    app = FastAPI(title="Scoped AI Support Bots — Gateway")
+    limiter = ratelimiter or RateLimiter()
+
+    # Prewarm: build every enabled bot's compiled graph NOW, so fragment-level config
+    # errors (e.g. a required tool missing from the allowlist, a provider without a
+    # default_model) fail at boot — golden rule 4 — instead of 500ing on the bot's
+    # first request. No network happens at build time (clients are constructed lazy).
+    for bot_id in registry.ids():
+        if registry.get(bot_id).enabled:
+            graphs.get(bot_id)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        task = asyncio.create_task(_sweep_loop(sessions, limiter, SWEEP_INTERVAL_S))
+        try:
+            yield
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    app = FastAPI(title="Scoped AI Support Bots — Gateway", lifespan=lifespan)
     app.state.registry = registry
     app.state.sessions = sessions
     app.state.graphs = graphs
-    app.state.ratelimiter = ratelimiter or RateLimiter()
+    app.state.ratelimiter = limiter
     # Verifier for requires_auth bots; None when the deployment has no auth block.
     app.state.auth = auth if auth is not None else build_verifier(registry.global_cfg.auth)
     app.include_router(native.router)

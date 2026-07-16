@@ -35,6 +35,15 @@ class RateLimiter:
             self._windows[(scope, key)] = w
         return w
 
+    def sweep(self) -> int:
+        """Drop expired windows. Keys are client-mintable (per-IP), so without GC the
+        map grows unboundedly; called from the app's periodic sweep task."""
+        now = self._clock()
+        expired = [k for k, w in self._windows.items() if now >= w.reset_at]
+        for k in expired:
+            del self._windows[k]
+        return len(expired)
+
     def check(self, key: str, *, per_min: int | None, per_day: int | None) -> int | None:
         """Count this request; return retry_after seconds if a limit is exceeded, else None."""
         retry: int | None = None

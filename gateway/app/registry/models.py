@@ -102,6 +102,17 @@ class ThemeTokens(BaseModel):
     radius: dict[str, str] = Field(default_factory=dict)
 
 
+class NetworkCfg(BaseModel):
+    """Reverse-proxy trust (docs/03). X-Forwarded-For is client-forgeable: when the
+    gateway is NOT behind a trusted proxy it must be ignored, or anonymous rate
+    limits are trivially bypassed (rotate fake IPs) and a victim's per-day budget is
+    remotely exhaustible. Default false = secure; set true ONLY when a trusted
+    reverse proxy (e.g. the compose Caddy) fronts every request."""
+
+    model_config = ConfigDict(extra="forbid")
+    trust_forwarded_for: bool = False
+
+
 class GlobalCfg(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: int
@@ -110,6 +121,7 @@ class GlobalCfg(BaseModel):
     auth: AuthCfg | None = None
     defaults: Defaults = Field(default_factory=Defaults)
     streaming: Streaming = Field(default_factory=Streaming)
+    network: NetworkCfg = Field(default_factory=NetworkCfg)
     theme: ThemeTokens
 
 
