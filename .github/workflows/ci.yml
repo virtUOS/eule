@@ -15,6 +15,7 @@ jobs:
       # secrets are needed — these bots don't call out during tests.
       VLLM_API_KEY: ci-dummy
       VLLM_SMALL_API_KEY: ci-dummy
+      ASKUOS_API_KEY: ci-dummy
       UOS_DOCS_MCP_TOKEN: ci-dummy
     steps:
       - uses: actions/checkout@v7
