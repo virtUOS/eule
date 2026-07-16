@@ -87,7 +87,7 @@ stream from 0.
 
 ### `session` (always first, seq 0)
 ```jsonc
-{ "type":"session","seq":0,"session_id":"9b0f...","protocol_version":"1.0",
+{ "type":"session","seq":0,"session_id":"9b0f...","protocol_version":"1.1",
   "bot_id":"course-catalog","expires_in":1800 }
 ```
 

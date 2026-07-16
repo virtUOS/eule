@@ -4,8 +4,8 @@ Identity is injected here, out-of-band, and NEVER placed in BotState, a checkpoi
 model-visible tool param, or the prompt (golden rule 2). There is no `surface` field
 (the OpenAI surface was cut).
 
-Step 1: auth is stubbed — Keycloak JWT validation lands in Step 3. For now every
-request yields an anonymous Identity. The `requires_auth` enforcement point is here.
+Real auth (Keycloak JWT validation, Step 3) resolves the Identity pre-stream in the
+endpoint; public bots get ANONYMOUS. Either way it travels only through this context.
 """
 
 from __future__ import annotations

@@ -51,6 +51,11 @@ Each embedding site needs two things:
    real gate (the gateway's Origin/CORS check). Loading the `.js` cross-origin is
    unrestricted; the gateway calls are what's gated.
 
+Pages served from the **deployment's own host** (the standalone page, a demo page
+behind the same Caddy) do NOT need allowlisting: the gateway treats an `Origin`
+whose host matches the request `Host` as same-origin. Only third-party embedding
+sites go in `allowed_origins`.
+
 ### Hosting options
 
 - **Dedicated static container** (this compose): nginx serving `dist/`. Simple, immutable

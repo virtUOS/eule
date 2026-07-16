@@ -23,8 +23,11 @@ class BotState(TypedDict):
 
 - **Identity is NOT in state.** It lives in RuntimeContext so it can never be
   model-authored or serialized into a checkpoint. (Enforcement of the golden rule.)
-- `messages` is the only persisted conversation surface. `history_max_turns` applied
-  by the gateway when hydrating, not by the graph.
+- `messages` is the only persisted conversation surface. `history_max_turns` is a
+  FRAGMENT responsibility: the gateway does not truncate on hydration; a fragment
+  that sends history to a model/provider should cap its own per-turn payload (the
+  stock `passthrough` does — see `_capped_history`). Known gap: it-helpdesk and
+  tool-agent currently send the full history; long sessions grow their prompts.
 
 ## 2. Runtime context (injected, read-only)
 
@@ -76,9 +79,7 @@ def ask_quick_replies(prompt: str, options: list[dict], allow_free_text: bool = 
 - Gateway assigns `reply_to` when translating the interrupt to a protocol event; the
   graph never sees it. On resume, gateway validates `reply_to` and feeds the
   normalized reply back as the `interrupt()` return value via `Command(resume=...)`.
-- When `ctx.surface == "openai"`, `allow_free_text=False` is illegal (rejected at
-  config validation, asserted at runtime as defense-in-depth).
-- `allow_free_text` is now a pure per-interrupt UX choice (let the user type instead of
+- `allow_free_text` is a pure per-interrupt UX choice (let the user type instead of
   clicking a chip). It is NOT a cross-surface obligation — the OpenAI surface is gone.
 - `emit_sources` typically runs after a retrieval/MCP tool node, passing through the
   `{title,source,url}` list the tool returned (or a curated subset). Do not fabricate
@@ -143,42 +144,36 @@ An orchestrator is a bot whose fragment **composes other bots' fragments as
 subgraphs** — it does NOT merge their tools. This preserves each sub-bot's structural
 scoping (a sub-bot still has no edge to another sub-bot's tools).
 
-Rules:
-- Build each sub-bot's fragment once; the router `add_node`s each as a subgraph and a
-  router node dispatches to the selected one.
-- **Menu-first (v1):** the router's entry is a `bot_greeting` that calls
-  `ask_quick_replies` with one option per `routes.targets[]`. The chosen `id` selects
-  the subgraph.
-- **Sticky routing:** store the chosen route in `scratch` (or a reserved session key);
-  subsequent turns re-enter the same subgraph. Provide an "Ask about something else"
-  option to return to the menu.
+Rules (implemented by the STOCK `router` fragment, `app/graphs/router.py` — an
+orchestrator is config-only; see `docs/09`):
+- Build each sub-bot's fragment **from its own config** once; the router `add_node`s
+  each as a compiled subgraph (no checkpointer — it persists through the parent's
+  composite checkpoint). Node names are `bot_<id>` (`:` is reserved in LangGraph).
+- **Menu-first (v1):** the entry node interrupts with `ask_quick_replies`, one option
+  per `routes.targets[]`, `allow_free_text=False` (classifier routing is v2). The
+  chosen id selects the subgraph.
+- **Handoff:** after a choice, a `handoff` node interrupts to ask for the question
+  (free text allowed) and carries the "ask about something else" escape option
+  (reserved id `__menu__`) back to the menu. Every routed answer returns to
+  `handoff`, so the escape stays one tap away — consequence: the front-door bot ends
+  every turn `awaiting_input`, never `complete`. The typed reply arrives as a resume
+  (which carries no HumanMessage, §5), so `handoff` appends it to `messages` itself.
+- **Sticky routing:** the chosen route lives in `scratch["route"]` and survives
+  across interrupt-resume turns (the composite checkpoint). A FRESH `message` turn
+  resets `scratch` (§8 input semantics), so a client that lost its pending interrupt
+  falls back to the menu — honest recovery, by design.
 - **Auth posture** is enforced at config validation (registry check 11); the router
   graph may assume every target it can reach is auth-compatible with its context.
-- **Interrupts across routing just work:** the composed graph is one compiled graph
-  with one checkpoint per `session_id`; a sub-bot's `quick_replies` pauses and resumes
-  inside the composite state with no special routing logic on resume. (Test it — it's
-  inherent, not built. See `06` §T5.)
-
-```python
-def build_router(cfg, subgraph_fragments: dict[str, GraphFragment]):
-    def flow(g):
-        def menu(state, *, ctx):
-            reply = ask_quick_replies(
-                "What can I help with?",
-                [{"id": t.bot, "label": t.label} for t in cfg.routes.targets],
-                allow_free_text=False,          # v1: menu only; classifier is v2
-            )
-            route = resolve_choice(reply, valid_ids={t.bot for t in cfg.routes.targets})
-            return {"scratch": {"route": route}}
-        g.add_node("menu", menu)
-        for target, frag in subgraph_fragments.items():
-            g.add_node(target, frag.compiled_subgraph())
-        g.add_conditional_edges("menu", lambda s: s["scratch"]["route"],
-                                {t: t for t in subgraph_fragments})
-        for target in subgraph_fragments:
-            g.add_edge(target, END)
-    return GraphFragment(flow)
-```
+  Nested routers are rejected (check 10); `graph: "router"` ⇔ a non-empty `routes`
+  block (check 14).
+- **Guards under composition:** sub-bot guards are NOT wired when composed (guard
+  wiring lives in the outer skeleton only), and router-flow questions arrive as
+  resumes into `handoff`, which no guard classifies. Scope inside the menu'd lane is
+  the structural tool allowlist (unchanged through the router — T11.6); the guard
+  layer is effectively absent under a router. Known, accepted for v1.
+- **Interrupts across routing just work:** one compiled graph, one checkpoint per
+  `session_id`; a sub-bot's `quick_replies` pauses and resumes inside the composite
+  state with no special routing logic on resume (verified — `06` §T5.5).
 
 ## 7. Tool calling with out-of-band identity (SECURITY-CRITICAL)
 

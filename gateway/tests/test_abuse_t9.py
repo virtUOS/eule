@@ -159,3 +159,27 @@ def test_ratelimiter_sweep_drops_expired_windows(fake_clock):
     swept = rl.sweep()
     assert swept == 2  # both minute windows expired ('a' min + 'b' min)
     rl.check("a", per_min=10, per_day=None)  # still functional after GC
+
+
+# --- T9.1b — true same-origin needs no allowlisting (review batch 4) ---------
+
+async def test_t9_1b_same_origin_allowed_without_allowlist(client):
+    """Browsers send Origin on EVERY POST including same-origin ones. The
+    deployment's own pages (standalone page, demo host) must not 403 on /chat just
+    because their own origin isn't in the embed allowlist."""
+    # ASGI test host is "test"; an Origin on the same host is true same-origin.
+    async with client.stream(
+        "POST", CHAT, json={"message": "hi"}, headers={"origin": "http://test", "host": "test"}
+    ) as r:
+        assert r.status_code == 200
+        # same-origin: no CORS headers needed (nothing for the browser to check)
+        assert "access-control-allow-origin" not in r.headers
+        await r.aread()
+
+
+async def test_t9_1b_cross_origin_still_gated(client):
+    resp = await client.post(
+        CHAT, json={"message": "hi"},
+        headers={"origin": "https://evil.example", "host": "test"},
+    )
+    assert resp.status_code == 403

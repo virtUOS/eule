@@ -34,25 +34,17 @@ Decouple rendering from announcing:
 - **Visual:** append `text` deltas live.
 - **Screen reader:** do NOT announce per-token. Buffer deltas; flush a completed
   chunk to `#cb-message-announcer` on sentence/clause boundary OR ~1s debounce. On
-  `done`, announce the complete final message once (authoritative).
+  `done`, flush only the UNANNOUNCED tail — never re-read the whole message (the
+  earlier chunks were already spoken; re-announcing the full text double-reads it).
 - Status → status announcer (atomic), never clobbers messages.
 - `prefers-reduced-motion` → skip streaming animation, render on `done`.
-Step 1 (gateway): + `GET /bots/{id}/config` bootstrap endpoint (theme + starter_replies
-  + name + greeting mode), CORS-checked, ETag-cacheable. + resolve_theme (light/dark).
-Step 2 (widget): render the three form factors (launcher/inline/standalone). Consume
-  bootstrap config; apply theme tokens as CSS vars in the Shadow root; support dark
-  via dark_mode (auto = prefers-color-scheme). Render starter chips (send `message`)
-  distinct from interrupt quick_replies (send `choice`). Reproduce the wolke visual
-  (editorial bot messages, citation cards, launcher, typing indicator) from
-  design/widget-mockup, but drop localStorage transcript, `/api/wolke/message`,
-  `/api/branding` fetch, always-visible free-text quick-replies, single live-region.
 
 ```js
 function onTextDelta(delta){ appendVisually(delta); buffer+=delta;
   const b=lastSentenceBoundary(buffer);
   if(b>0){ announce(buffer.slice(0,b)); buffer=buffer.slice(b); }
   resetDebounce(1000, ()=>{ announce(buffer); buffer=""; }); }
-function onDone(full){ clearDebounce(); announceFinal(full); }
+function onDone(){ clearDebounce(); announce(buffer); buffer=""; } // tail only
 function onStatus(label){ setStatusAnnouncer(label); }
 ```
 

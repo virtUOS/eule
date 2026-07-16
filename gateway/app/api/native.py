@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from urllib.parse import urlparse
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -93,11 +94,21 @@ def _error_response(
     return JSONResponse(status_code=status, content=body, headers=headers or {})
 
 
-def _cors_headers(origin: str | None, cfg: BotCfg) -> tuple[bool, dict[str, str]]:
-    """(allowed, headers). No Origin = same-origin/non-browser → allowed, no headers.
-    A cross-origin request is allowed only when its Origin is in the bot's allowlist."""
+def _cors_headers(origin: str | None, cfg: BotCfg, host: str | None) -> tuple[bool, dict[str, str]]:
+    """(allowed, headers). No Origin = non-browser → allowed, no headers. TRUE
+    same-origin is also allowed without allowlisting: browsers send Origin on every
+    POST including same-origin ones, so the deployment's own pages (standalone page,
+    demo host) would otherwise 403 on /chat unless they allowlisted themselves — a
+    deployment trap (config GETs succeeded, every message failed). Host-only
+    comparison: behind the TLS-terminating proxy the gateway sees http, so a scheme
+    check would wrongly reject https origins; same-host-different-scheme is not a
+    boundary we can enforce here. A cross-origin request is allowed only when its
+    Origin is in the bot's allowlist."""
     if origin is None:
         return True, {}
+    origin_host = urlparse(origin).netloc
+    if host is not None and origin_host and origin_host.lower() == host.lower():
+        return True, {}  # same-origin: no CORS headers needed
     if origin in cfg.embedding.allowed_origins:
         return True, {"Access-Control-Allow-Origin": origin, "Vary": "Origin"}
     return False, {}
@@ -121,7 +132,7 @@ async def chat_preflight(bot_id: str, request: Request) -> Response:
         cfg = request.app.state.registry.get(bot_id)
     except UnknownBot:
         return Response(status_code=404)
-    _allowed, cors = _cors_headers(request.headers.get("origin"), cfg)
+    _allowed, cors = _cors_headers(request.headers.get("origin"), cfg, request.headers.get("host"))
     if cors:
         cors = {
             **cors,
@@ -148,7 +159,7 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
 
     # Origin gate (docs/06 T9.1). A disallowed cross-origin embed is refused outright.
     origin = request.headers.get("origin")
-    allowed, cors = _cors_headers(origin, cfg)
+    allowed, cors = _cors_headers(origin, cfg, request.headers.get("host"))
     if not allowed:
         return _error_response(403, "forbidden_origin", "This origin may not embed this bot.")
 
@@ -247,7 +258,7 @@ async def bootstrap(bot_id: str, request: Request, lang: str = "de") -> Any:
         return _error_response(404, "unknown_bot", f"No bot with id '{bot_id}'.")
 
     origin = request.headers.get("origin")
-    allowed, cors = _cors_headers(origin, cfg)
+    allowed, cors = _cors_headers(origin, cfg, request.headers.get("host"))
     if not allowed:
         return _error_response(403, "forbidden_origin", "This origin may not embed this bot.")
 
