@@ -1,7 +1,6 @@
-# Scoped AI Support Bots
+# eule: Unified AI Bots
 
-**Self-hosted infrastructure for running several narrowly-scoped AI support bots behind
-one embeddable chat widget.** You define each bot in a YAML file — its system prompt, its
+**Infrastucture for running several AI bots behind one embeddable chat widget.** You define each bot in a YAML file — its system prompt, its
 model, and the internal systems it may call as tools — and the gateway serves all of them
 from a single process. A university might run an IT-helpdesk bot, a study-advice bot, and
 a front-door bot that routes between them, each answering only within its lane, each
