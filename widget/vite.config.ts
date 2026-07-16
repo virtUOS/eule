@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 import { devBackendStub } from "./dev-stub";
 
@@ -7,6 +7,11 @@ export default defineConfig({
   // Dev-only stubbed gateway so `npm run dev` renders a working widget offline.
   plugins: [devBackendStub()],
   build: {
+    // PINNED browser floor — do not let a Vite major move it silently. The widget's
+    // runtime APIs already require Safari 14.1+ (fetch body streaming for SSE), so
+    // this is the NEWEST syntax target that doesn't exceed the API floor. It equals
+    // Vite 5's old 'modules' default, i.e. the floor we have always shipped.
+    target: ["es2020", "edge88", "firefox78", "chrome87", "safari14"],
     lib: {
       entry: resolve(__dirname, "src/index.ts"),
       name: "WolkeWidget",
