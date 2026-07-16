@@ -23,7 +23,7 @@
     </main>
     <script type="module">
       import { mount } from "/src/index.ts";
-      mount({ botId: "echo", mode: "standalone", mount: document.getElementById("mount") }).then((w) => {
+      mount({ botId: "assistant", mode: "standalone", mount: document.getElementById("mount") }).then((w) => {
         window.__widget = w;
         document.body.dataset.ready = "1";
       });
