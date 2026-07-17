@@ -300,7 +300,7 @@
 
           setReadout("mounting…", "idle");
           try {
-            widget = await window.WolkeWidget.mount(opts);
+            widget = await window.EuleWidget.mount(opts);
             setReadout("live", "live");
           } catch (err) {
             setReadout("gateway unreachable", "error");

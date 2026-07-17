@@ -274,7 +274,7 @@ identity. What each one does:
 
 **URL query parameters:** the production `widget.js` reads **none** — all
 configuration is via the `data-*` attributes above (or the programmatic
-`WolkeWidget.mount(options)` API). Only the *dev demo page* (`npm run dev`) accepts
+`EuleWidget.mount(options)` API). Only the *dev demo page* (`npm run dev`) accepts
 `?mode=…&botId=…&lang=…&theme=…&topic=…&page=…` for manual testing; the shipped
 `/standalone.html` is statically configured.
 

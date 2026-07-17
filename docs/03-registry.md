@@ -82,7 +82,7 @@ defaults:
 # Global-only keys (NOT per-bot overridable) live outside `defaults`.
 streaming: { heartbeat_s: 15 }
 
-# Deployment default theme = wolke design system. External clients override same keys.
+# Deployment default theme (from the design mockup). External clients override same keys.
 theme:
   dark_mode: "auto"              # auto (prefers-color-scheme) | light | dark
   light:
@@ -308,7 +308,7 @@ OpenAI-surface API keys stored hashed in a secret store, never YAML. Loader reso
    - `--primary` as TEXT on `--bg` ≥ 4.5:1  (links, starter chips, quick-reply chips).
    - `--text` on `--bg` ≥ 4.5:1; `--text-muted` on `--bg` and on `--surface` ≥ 4.5:1.
    - `--on-primary` on `--primary` ≥ 3:1  (icons on launcher/send are graphical, SC 1.4.11).
-   - `--accent` is decorative (eyebrow glyph beside the text label "WOLKE") → EXEMPT.
+   - `--accent` is decorative (eyebrow glyph beside the bot-name label) → EXEMPT.
    FAIL boot on any violation. This is the guardrail that catches an external client
    shipping a pale `--primary` that makes links or the send icon illegible.
 10. `routes.targets[].bot` each exists, is `enabled`, and is not the router itself

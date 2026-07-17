@@ -16,7 +16,7 @@ def test_contrast_ratio_known_values():
     assert round(contrast_ratio("#ffffff", "#ffffff"), 1) == 1.0
 
 
-def test_wolke_deployment_theme_passes():
+def test_deployment_theme_passes():
     theme = resolve_theme(make_global().theme)
     assert contrast_violations(theme) == []
 

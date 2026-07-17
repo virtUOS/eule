@@ -14,7 +14,7 @@ export default defineConfig({
     target: ["es2020", "edge88", "firefox78", "chrome87", "safari14"],
     lib: {
       entry: resolve(__dirname, "src/index.ts"),
-      name: "WolkeWidget",
+      name: "EuleWidget",
       fileName: () => "widget.js",
       formats: ["iife"],
     },

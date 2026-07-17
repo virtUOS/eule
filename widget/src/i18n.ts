@@ -23,12 +23,12 @@ export interface Strings {
 }
 
 const de: Strings = {
-  ask: "Fragen? wolke hilft",
+  ask: "Fragen? Der Assistent hilft",
   close: "Schließen",
   newChat: "Neues Gespräch",
   send: "Senden",
-  placeholder: "Nachricht an wolke…",
-  region: "wolke Chat",
+  placeholder: "Deine Nachricht…",
+  region: "Assistent-Chat",
   youSaid: "Du:",
   assistantSaid: "Assistent:",
   sourcesLabel: "Quellen",
@@ -42,12 +42,12 @@ const de: Strings = {
 };
 
 const en: Strings = {
-  ask: "Ask wolke",
+  ask: "Ask the assistant",
   close: "Close",
   newChat: "New chat",
   send: "Send",
-  placeholder: "Message wolke…",
-  region: "wolke chat",
+  placeholder: "Your message…",
+  region: "Assistant chat",
   youSaid: "You said:",
   assistantSaid: "Assistant said:",
   sourcesLabel: "Sources",

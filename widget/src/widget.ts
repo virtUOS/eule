@@ -1,4 +1,4 @@
-// WolkeWidget — orchestration. Wires the SSE turn stream to rendering + the two
+// EuleWidget — orchestration. Wires the SSE turn stream to rendering + the two
 // accessibility announcers, focus management, and the three form factors.
 
 import { Announcer, createFocusTrap, focusable } from "./a11y";
@@ -49,7 +49,7 @@ export interface WidgetOptions {
 // re-rendered after a reload — the interrupt itself survives server-side.
 type PendingInterrupt = PersistedInterrupt;
 
-export class WolkeWidget {
+export class EuleWidget {
   private readonly opts: Required<Pick<WidgetOptions, "botId" | "mode" | "lang">> & WidgetOptions;
   private readonly baseUrl: string;
   private s!: Strings;
@@ -393,7 +393,7 @@ export class WolkeWidget {
     const major = version.split(".")[0];
     if (major !== String(PROTOCOL_MAJOR)) {
       console.warn(
-        `[wolke-widget] server protocol v${version} != expected major v${PROTOCOL_MAJOR}; ` +
+        `[eule-widget] server protocol v${version} != expected major v${PROTOCOL_MAJOR}; ` +
           "some features may not work. Update the widget.",
       );
     }

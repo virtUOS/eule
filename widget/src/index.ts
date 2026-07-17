@@ -1,5 +1,5 @@
 // Bootstrap entry. Auto-inits from the embedding <script>'s data-* attributes and also
-// exposes a programmatic API (window.WolkeWidget.mount).
+// exposes a programmatic API (window.EuleWidget.mount).
 //
 //   <script src="/widget.js" data-bot-id="echo" data-mode="launcher"
 //           data-base-url="https://gateway.uni.edu" data-lang="de"
@@ -9,7 +9,7 @@
 // data-context-* forwards host-page context on every turn (docs/01 §Context).
 // data-context-page="auto" sends the current page URL.
 
-import { WolkeWidget, type WidgetOptions } from "./widget";
+import { EuleWidget, type WidgetOptions } from "./widget";
 import type { Mode } from "./dom";
 import type { Lang } from "./i18n";
 
@@ -49,8 +49,8 @@ function readScriptOptions(script: HTMLScriptElement): WidgetOptions | null {
   return options;
 }
 
-export function mount(options: WidgetOptions): Promise<WolkeWidget> {
-  const widget = new WolkeWidget(options);
+export function mount(options: WidgetOptions): Promise<EuleWidget> {
+  const widget = new EuleWidget(options);
   return widget.init().then(() => widget);
 }
 
@@ -61,11 +61,11 @@ function autoInit(): void {
   if (!script) return;
   const options = readScriptOptions(script);
   if (!options) return;
-  mount(options).catch((err) => console.error("[wolke-widget]", err));
+  mount(options).catch((err) => console.error("[eule-widget]", err));
 }
 
 // currentScript is only valid during synchronous script evaluation.
 autoInit();
 
-export { WolkeWidget };
+export { EuleWidget };
 export type { WidgetOptions };

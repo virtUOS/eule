@@ -70,7 +70,7 @@ defaults:
 # Global-only (NOT per-bot overridable).
 streaming: { heartbeat_s: 15 }
 
-# Deployment default theme = wolke design system. External clients override same keys.
+# Deployment default theme (from the design mockup). External clients override same keys.
 theme:
   dark_mode: "auto"              # auto (prefers-color-scheme) | light | dark
   light:
@@ -91,9 +91,9 @@ theme:
     "--border": "#34343a"
     "--text": "#f4f4f5"
     "--text-muted": "#9a9aa1"
-    # wolke's #c2355c is only 3.41:1 on the dark --bg (fails the check-9 4.5:1 link/chip
+    # The mockup's #c2355c is only 3.41:1 on the dark --bg (fails the check-9 4.5:1 link/chip
     # contract). Lightened to #d95c7d (4.97:1) — contract wins over the mockup token
-    # (CLAUDE.md design rules). Confirm with the wolke designer.
+    # (CLAUDE.md design rules).
     "--primary": "#d95c7d"
     "--primary-hover": "#c2355c"
     "--accent": "#f2c879"

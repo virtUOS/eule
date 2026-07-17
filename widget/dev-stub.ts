@@ -3,10 +3,10 @@ import type { ServerResponse } from "node:http";
 
 // Dev-only stubbed gateway so `npm run dev` shows a working widget offline (the real
 // gateway is a separate service). NOT part of the production build. Mirrors the
-// protocol (docs/01) and the wolke theme defaults (docs/03).
+// protocol (docs/01) and the theme defaults (docs/03).
 
 const CONFIG = {
-  name: "wolke",
+  name: "eule",
   theme: {
     dark_mode: "auto",
     light: {
@@ -82,7 +82,7 @@ function readBody(req: Connect.IncomingMessage): Promise<string> {
 
 export function devBackendStub(): Plugin {
   return {
-    name: "wolke-dev-backend-stub",
+    name: "eule-dev-backend-stub",
     apply: "serve",
     configureServer(server) {
       server.middlewares.use(async (req: Connect.IncomingMessage, res: ServerResponse, next) => {
