@@ -36,6 +36,9 @@
       if (p.get("topic")) context.topic = p.get("topic");
       if (p.get("page")) context.page = p.get("page") === "auto" ? location.origin + location.pathname : p.get("page");
       if (Object.keys(context).length) opts.context = context;
+      // launcher offsets: ?offsetRight=…&offsetBottom=… (CSS length expressions)
+      if (p.get("offsetRight")) opts.offsetRight = p.get("offsetRight");
+      if (p.get("offsetBottom")) opts.offsetBottom = p.get("offsetBottom");
       const tokenFn = p.get("getToken");
       if (tokenFn && typeof window[tokenFn] === "function") opts.getToken = window[tokenFn];
       if (mode !== "launcher") opts.mount = document.getElementById("inline-mount");

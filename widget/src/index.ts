@@ -4,7 +4,8 @@
 //   <script src="/widget.js" data-bot-id="echo" data-mode="launcher"
 //           data-base-url="https://gateway.uni.edu" data-lang="de"
 //           data-get-token="myTokenFn"
-//           data-context-page="auto" data-context-topic="admissions"></script>
+//           data-context-page="auto" data-context-topic="admissions"
+//           data-offset-right="24px" data-offset-bottom="24px"></script>
 //
 // data-context-* forwards host-page context on every turn (docs/01 §Context).
 // data-context-page="auto" sends the current page URL.
@@ -46,6 +47,9 @@ function readScriptOptions(script: HTMLScriptElement): WidgetOptions | null {
   if (script.dataset.contextTopic) context.topic = script.dataset.contextTopic;
   if (script.dataset.contextLocale) context.locale = script.dataset.contextLocale;
   if (Object.keys(context).length > 0) options.context = context;
+  // Launcher offsets (validated in the widget; passed through verbatim here).
+  if (script.dataset.offsetRight) options.offsetRight = script.dataset.offsetRight;
+  if (script.dataset.offsetBottom) options.offsetBottom = script.dataset.offsetBottom;
   return options;
 }
 

@@ -256,6 +256,8 @@ Deploy `widget.js` once; each site references it and is listed in the bot's
 | `data-context-page` | page attribution sent with every turn; `"auto"` sends the page's origin + path (query string and fragment are **stripped** — they can carry tokens) |
 | `data-context-topic` | topic hint sent with every turn (see routing below) |
 | `data-context-locale` | locale hint for backends with a language field (e.g. askUOS) |
+| `data-offset-right` | launcher-mode distance from the right edge — a CSS `<length>` expression (default `20px`). e.g. `24px` or `max(24px, calc((100vw - 1180px) / 2 + 24px))` to align the button to a centered content column. Validated defensively; ignored for `inline`/`standalone`. |
+| `data-offset-bottom` | launcher-mode distance from the bottom edge — a CSS `<length>` (default `20px`). The panel sits above the launcher and its height shrinks to match, so it never overflows the viewport top. |
 
 **How the context values route.** The three `data-context-*` values travel as the
 protocol's `context` object on every turn — validated by the gateway against a strict

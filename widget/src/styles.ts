@@ -10,6 +10,11 @@ export const CSS = /* css */ `
   --radius-bubble: 14px;
   --radius-input: 12px;
   --radius-send: 14px;
+  /* Launcher-mode offsets from the viewport edge (host-configurable via the embedding
+     API; defaults preserve the original fixed 20px position). all:initial does not
+     reset custom properties, so these survive it. */
+  --cb-offset-right: 20px;
+  --cb-offset-bottom: 20px;
   all: initial;
 }
 /* Launcher: the host element must NOT affect host-page layout (panel+launcher are
@@ -35,7 +40,7 @@ export const CSS = /* css */ `
 
 /* --- launcher (View A) --- */
 .cb-launcher {
-  position: fixed; right: 20px; bottom: 20px;
+  position: fixed; right: var(--cb-offset-right); bottom: var(--cb-offset-bottom);
   width: 58px; height: 58px; border-radius: 50%;
   border: none; background: var(--primary); color: var(--on-primary);
   box-shadow: 0 10px 26px rgba(166, 9, 61, .42);
@@ -51,9 +56,13 @@ export const CSS = /* css */ `
   display: flex; flex-direction: column; overflow: hidden;
 }
 .cb-mode-launcher .cb-panel {
-  position: fixed; right: 20px; bottom: 92px;
+  /* Sits above the launcher and tracks its offsets: bottom = offset + launcher(58) +
+     gap(14) = offset + 72; height leaves a 28px top margin, so it shrinks as the bottom
+     offset grows and never overflows the viewport top (offset + 72 + 28 = offset + 100). */
+  position: fixed; right: var(--cb-offset-right);
+  bottom: calc(var(--cb-offset-bottom) + 72px);
   width: 376px; max-width: calc(100vw - 32px);
-  height: min(560px, calc(100vh - 120px));
+  height: min(560px, calc(100vh - var(--cb-offset-bottom) - 100px));
   border-radius: var(--radius-panel);
   box-shadow: 0 18px 50px rgba(0, 0, 0, .18);
   animation: cb-pop .3s ease;

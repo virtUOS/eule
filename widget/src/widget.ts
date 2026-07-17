@@ -22,7 +22,7 @@ import {
 } from "./persist";
 import { botMessage, type BotMessage, userMessage } from "./render";
 import { streamChat } from "./sse";
-import { applyTheme, resolveScheme, watchScheme, type Scheme } from "./theme";
+import { applyLauncherOffsets, applyTheme, resolveScheme, watchScheme, type Scheme } from "./theme";
 
 const WIDGET_VERSION = "0.1.0";
 const PROTOCOL_MAJOR = 1; // the wire-protocol major this widget speaks (docs/01)
@@ -43,6 +43,11 @@ export interface WidgetOptions {
   // Host-page context forwarded on every turn (docs/01 §Context). Non-sensitive
   // hints only — the gateway rejects anything outside its allowlist/size caps.
   context?: PageContext;
+  // Launcher-mode offsets from the viewport edge (CSS <length> expressions, e.g.
+  // "24px" or "max(24px, calc((100vw - 1180px) / 2 + 24px))"). Default 20px each.
+  // Validated defensively; ignored for inline/standalone.
+  offsetRight?: string;
+  offsetBottom?: string;
 }
 
 // Full interrupt presentation is kept (not just replyTo) so it can be persisted and
@@ -114,6 +119,10 @@ export class EuleWidget {
 
     const scheme = this.opts.scheme ?? resolveScheme(this.config.theme.dark_mode);
     applyTheme(this.hostEl, this.config.theme, scheme);
+    // Launcher offsets: host-configurable position; inline/standalone don't use them.
+    if (this.opts.mode === "launcher") {
+      applyLauncherOffsets(this.hostEl, this.opts.offsetRight, this.opts.offsetBottom);
+    }
     // Follow OS scheme changes only when the host hasn't forced a scheme.
     this.unwatchScheme = this.opts.scheme
       ? null
