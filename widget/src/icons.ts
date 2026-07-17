@@ -11,6 +11,9 @@ const wrap = (inner: string, opts: { w: number; fill?: boolean; sw?: number }): 
 export const cloud = (w: number): string =>
   wrap(`<path d="M6.5 19a4.5 4.5 0 0 1-.5-8.97A6 6 0 0 1 17.7 8.5 4 4 0 0 1 17.5 19h-11z"/>`, { w, fill: true });
 
+export const bota = (w: number): string =>
+  wrap(`<path fill-rule="evenodd" d="M5 4h14a3 3 0 0 1 3 3v6.5a3 3 0 0 1-3 3h-7.2L7 20.6v-4.1H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Z M8 9.25a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Z M12 9.25a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Z M16 9.25a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Z"/>`, { w, fill: true });
+
 export const close = (w = 18, sw = 2): string =>
   wrap(`<path d="M6 6l12 12M18 6L6 18"/>`, { w, sw });
 

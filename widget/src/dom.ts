@@ -69,7 +69,7 @@ export function buildDom(root: ShadowRoot, mode: Mode, name: string, s: Strings)
   header.className = "cb-header";
   const avatar = document.createElement("div");
   avatar.className = "cb-avatar";
-  avatar.innerHTML = icons.cloud(18);
+  avatar.innerHTML = icons.bota(18);
   const title = document.createElement("h2");
   title.className = "cb-title";
   title.textContent = name;
@@ -131,7 +131,7 @@ export function buildDom(root: ShadowRoot, mode: Mode, name: string, s: Strings)
     launcher.className = "cb-launcher";
     launcher.setAttribute("aria-label", s.ask);
     launcher.setAttribute("aria-expanded", "false");
-    launcher.innerHTML = icons.cloud(28);
+    launcher.innerHTML = icons.bota(28);
   }
 
   container.append(statusRegion, messageRegion, panel);

@@ -75,7 +75,7 @@ export function botMessage(s: Strings, botName: string): BotMessage {
   eyebrow.className = "cb-eyebrow";
   const glyph = document.createElement("span");
   glyph.className = "cb-eyebrow-glyph";
-  glyph.innerHTML = icons.cloud(14);
+  glyph.innerHTML = icons.bota(14);
   const label = document.createElement("span");
   label.className = "cb-eyebrow-label";
   label.textContent = botName;
