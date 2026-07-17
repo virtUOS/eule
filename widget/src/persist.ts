@@ -8,12 +8,13 @@
 // and on `session_not_found`. Nothing here is trusted input on the way back in:
 // rehydrated text is rendered via textContent (render.ts), never innerHTML.
 
-import type { QuickReplyOption, SourceItem } from "./protocol";
+import type { ActionItem, QuickReplyOption, SourceItem } from "./protocol";
 
 export interface PersistedEntry {
   role: "user" | "bot";
   text: string;
   sources?: SourceItem[];
+  actions?: ActionItem[];
 }
 
 // A pending interrupt survives server-side (session.pending_reply_to); persist its
@@ -121,6 +122,16 @@ function isOption(o: unknown): boolean {
   return typeof opt.id === "string" && typeof opt.label === "string";
 }
 
+function isAction(a: unknown): boolean {
+  if (typeof a !== "object" || a === null) return false;
+  const act = a as Record<string, unknown>;
+  return (
+    (act.kind === "tel" || act.kind === "url" || act.kind === "mailto") &&
+    typeof act.label === "string" &&
+    typeof act.value === "string"
+  );
+}
+
 function isEntry(e: unknown): boolean {
   if (typeof e !== "object" || e === null) return false;
   const entry = e as Record<string, unknown>;
@@ -128,7 +139,9 @@ function isEntry(e: unknown): boolean {
     (entry.role === "user" || entry.role === "bot") &&
     typeof entry.text === "string" &&
     (entry.sources === undefined ||
-      (Array.isArray(entry.sources) && entry.sources.every(isSource)))
+      (Array.isArray(entry.sources) && entry.sources.every(isSource))) &&
+    (entry.actions === undefined ||
+      (Array.isArray(entry.actions) && entry.actions.every(isAction)))
   );
 }
 

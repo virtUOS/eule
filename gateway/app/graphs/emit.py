@@ -28,6 +28,15 @@ def emit_sources(message_id: str, sources: list[dict[str, Any]]) -> None:
     get_stream_writer()({"type": "sources", "message_id": message_id, "sources": sources})
 
 
+def emit_actions(message_id: str, actions: list[dict[str, Any]]) -> None:
+    """actions: [{"kind": "tel"|"url"|"mailto", "label": str, "value": str}], attached
+    to an assistant message like `sources` (docs/01 §actions). The widget renders them
+    as device-aware links (tel: dials on mobile, shows the number on desktop) and
+    re-sanitizes every value — a fragment must still only emit trusted, config-derived
+    values here. `message_id` MUST be the `.id` of the AIMessage they belong to."""
+    get_stream_writer()({"type": "actions", "message_id": message_id, "actions": actions})
+
+
 def ask_quick_replies(
     prompt: str, options: list[dict[str, Any]], allow_free_text: bool = True
 ) -> Any:

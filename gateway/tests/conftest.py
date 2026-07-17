@@ -23,6 +23,7 @@ VALID_ENV = {
     "VLLM_SMALL_API_KEY": "test-key",
     "ASKUOS_API_KEY": "test-key",
     "UOS_DOCS_MCP_TOKEN": "test-token",
+    "UOS_HELPDESK_MCP_TOKEN": "test-token",
 }
 
 

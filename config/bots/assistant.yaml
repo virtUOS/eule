@@ -16,9 +16,9 @@ routes:
   mode: "menu"                  # v1: menu only (classifier routing is v2)
   sticky: true
   targets:
-    - { bot: "askuos",        label: "Studium & Bewerbung (askUOS)" }
-    - { bot: "it-helpdesk",   label: "IT-Hilfe (VPN, WLAN, Passwort)" }
-    - { bot: "campus-search", label: "Campus-Suche" }
+    - { bot: "askuos",          label: "Studium & Bewerbung (askUOS)" }
+    - { bot: "it-servicedesk",  label: "IT-Hilfe (Info, Anruf, Feedback)" }
+    - { bot: "campus-search",   label: "Campus-Suche" }
 
 model:
   provider: "fast-small"        # used ONLY by routes.mode: "classifier" (step 12) —

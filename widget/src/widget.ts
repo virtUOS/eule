@@ -5,6 +5,7 @@ import { Announcer, createFocusTrap, focusable } from "./a11y";
 import { buildDom, type Mode, type WidgetDom } from "./dom";
 import { strings, type Lang, type Strings } from "./i18n";
 import type {
+  ActionItem,
   BootstrapConfig,
   ChatRequest,
   PageContext,
@@ -67,7 +68,9 @@ export class WolkeWidget {
   private entries: PersistedEntry[] = [];
   private expiresAt: number | null = null;
   private turnSources = new Map<string, SourceItem[]>();
+  private turnActions = new Map<string, ActionItem[]>();
   private pendingSources: string | null = null; // announced AFTER the body, on done
+  private pendingActions: string | null = null; // announced AFTER the body, on done
   private typingEl: HTMLElement | null = null;
   private lastRequest: ChatRequest | null = null;
   // One turn at a time: `streaming` gates every submit path (button disabling alone
@@ -226,6 +229,7 @@ export class WolkeWidget {
           const bot = botMessage(this.s, this.config.name);
           bot.appendText(entry.text);
           if (entry.sources?.length) bot.attachSources(entry.sources, this.s);
+          if (entry.actions?.length) bot.attachActions(entry.actions, this.s);
           this.dom.log.appendChild(bot.el);
         }
       }
@@ -260,7 +264,9 @@ export class WolkeWidget {
     this.entries = [];
     this.expiresAt = null;
     this.turnSources.clear();
+    this.turnActions.clear();
     this.pendingSources = null;
+    this.pendingActions = null;
     this.started = false;
     this.dom.log.replaceChildren();
     this.clearTyping();
@@ -315,7 +321,9 @@ export class WolkeWidget {
     this.hideError();
     this.bots.clear();
     this.turnSources.clear();
+    this.turnActions.clear();
     this.pendingSources = null;
+    this.pendingActions = null;
     this.turnComplete = false;
     // A resume turn consumes its interrupt server-side; if the stream drops it CANNOT
     // be safely retried (the reply_to no longer matches) — so it is not recoverable.
@@ -418,6 +426,14 @@ export class WolkeWidget {
         this.pendingSources = this.sourcesAnnouncement(ev.sources);
         this.autoscroll();
         break;
+      case "actions": {
+        // Contact/link buttons on this bubble; announced after the body (like sources).
+        const shown = this.ensureBotMessage(ev.message_id).attachActions(ev.actions, this.s);
+        this.turnActions.set(ev.message_id, ev.actions);
+        this.pendingActions = shown.length ? this.s.actionsAnnounce(shown.join(", ")) : null;
+        this.autoscroll();
+        break;
+      }
       case "quick_replies":
         this.clearTyping();
         this.renderInterrupt(ev);
@@ -450,18 +466,26 @@ export class WolkeWidget {
     // persisted transcript — including partial text kept after an in-stream error.
     for (const [messageId, bot] of this.bots) {
       const text = bot.fullText();
-      if (!text) continue;
-      this.entries.push({ role: "bot", text, sources: this.turnSources.get(messageId) });
+      const actions = this.turnActions.get(messageId);
+      if (!text && !(actions && actions.length)) continue;
+      this.entries.push({
+        role: "bot", text, sources: this.turnSources.get(messageId), actions,
+      });
     }
     this.bots.clear();
     this.turnSources.clear();
+    this.turnActions.clear();
     this.persist();
-    // flush the unannounced tail of the body first, THEN the sources — so a screen
-    // reader hears the answer before its citations (docs/05 §3).
+    // flush the unannounced tail of the body first, THEN the sources/actions — so a
+    // screen reader hears the answer before its citations/contacts (docs/05 §3).
     this.announcer.finalize();
     if (this.pendingSources) {
       this.announcer.announceSources(this.pendingSources);
       this.pendingSources = null;
+    }
+    if (this.pendingActions) {
+      this.announcer.announceSources(this.pendingActions);
+      this.pendingActions = null;
     }
     if (status === "awaiting_input") {
       // interrupt UI + its announcement were set by quick_replies; keep them and the

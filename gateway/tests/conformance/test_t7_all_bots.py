@@ -65,6 +65,11 @@ def _docs_server() -> FastMCP:
         """Fetch page content as markdown."""
         return f"# Page\ncontent of {url}"
 
+    @server.tool()
+    async def submit_feedback(kind: str, message: str) -> dict:
+        """File a feedback/issue ticket."""
+        return {"ok": True, "ticket_id": "T-1"}
+
     return server
 
 
@@ -86,8 +91,11 @@ _PATCH_TARGETS = [
     ("app.graphs.it_helpdesk", "build_chat_model", _fake_model),
     ("app.graphs.passthrough", "build_chat_model", _fake_model),
     ("app.graphs.tool_agent", "build_chat_model", _fake_model),
+    ("app.graphs.it_servicedesk", "build_chat_model", _fake_model),
     ("app.graphs.it_helpdesk", "client_for", _fake_client),
     ("app.graphs.tool_agent", "client_for", _fake_client),
+    ("app.graphs.router", "build_chat_model", _fake_model),
+    ("app.graphs.it_servicedesk", "client_for", _fake_client),
 ]
 
 

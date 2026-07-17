@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict
 from ..registry.models import BotCfg
 from .echo import build_echo_fragment
 from .it_helpdesk import build_it_helpdesk_fragment
+from .it_servicedesk import ServicedeskParams, build_it_servicedesk_fragment
 from .passthrough import PassthroughParams, build_passthrough_fragment
 from .router import RouterParams, build_router_fragment
 from .skeleton import GraphFragment
@@ -43,6 +44,7 @@ FRAGMENT_BUILDERS: dict[str, FragmentBuilder] = {
     # bespoke fragments (in-tree gateway code)
     "echo": lambda cfg, registry: build_echo_fragment(),
     "it-helpdesk": lambda cfg, registry: build_it_helpdesk_fragment(cfg, registry),
+    "it-servicedesk": lambda cfg, registry: build_it_servicedesk_fragment(cfg, registry),
     # stock fragments (config-only bots — BUILD_PLAN steps 9 + 9c)
     "passthrough": lambda cfg, registry: build_passthrough_fragment(cfg, registry),
     "tool-agent": lambda cfg, registry: build_tool_agent_fragment(cfg, registry),
@@ -54,6 +56,7 @@ FRAGMENT_BUILDERS: dict[str, FragmentBuilder] = {
 FRAGMENT_PARAM_MODELS: dict[str, type[BaseModel]] = {
     "echo": NoParams,
     "it-helpdesk": NoParams,
+    "it-servicedesk": ServicedeskParams,
     "passthrough": PassthroughParams,
     "tool-agent": ToolAgentParams,
     "router": RouterParams,

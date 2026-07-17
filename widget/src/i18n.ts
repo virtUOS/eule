@@ -13,9 +13,11 @@ export interface Strings {
   youSaid: string;
   assistantSaid: string;
   sourcesLabel: string;
+  actionsLabel: string;
   chooseOption: string;
   composerDisabledHint: string;
   sourcesAnnounce: (n: number, titles: string) => string;
+  actionsAnnounce: (labels: string) => string;
   errorRetry: string;
   connectionLost: string;
 }
@@ -30,9 +32,11 @@ const de: Strings = {
   youSaid: "Du:",
   assistantSaid: "Assistent:",
   sourcesLabel: "Quellen",
+  actionsLabel: "Kontakt",
   chooseOption: "Bitte wähle eine Option:",
   composerDisabledHint: "Bitte wähle eine der Optionen oben.",
   sourcesAnnounce: (n, titles) => `${n} ${n === 1 ? "Quelle" : "Quellen"}: ${titles}.`,
+  actionsAnnounce: (labels) => `Kontaktmöglichkeiten: ${labels}.`,
   errorRetry: "Erneut versuchen",
   connectionLost: "Verbindung unterbrochen. Bitte erneut versuchen.",
 };
@@ -47,9 +51,11 @@ const en: Strings = {
   youSaid: "You said:",
   assistantSaid: "Assistant said:",
   sourcesLabel: "Sources",
+  actionsLabel: "Contact",
   chooseOption: "Choose an option:",
   composerDisabledHint: "Please choose one of the options above.",
   sourcesAnnounce: (n, titles) => `${n} ${n === 1 ? "source" : "sources"}: ${titles}.`,
+  actionsAnnounce: (labels) => `Contact options: ${labels}.`,
   errorRetry: "Try again",
   connectionLost: "The connection was lost. Please try again.",
 };

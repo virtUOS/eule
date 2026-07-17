@@ -34,6 +34,12 @@ mcp_servers:
     url: "https://mcp-uos-docs.example.invalid/mcp"   # PLACEHOLDER — set to the real URL
     timeout_s: 30
     bearer_token_env: "UOS_DOCS_MCP_TOKEN"
+  # Helpdesk backend: exposes submit_feedback(kind, message) for the it-servicedesk bot.
+  uos-helpdesk:
+    transport: "streamable-http"
+    url: "https://mcp-uos-helpdesk.example.invalid/mcp"   # PLACEHOLDER — set to the real URL
+    timeout_s: 30
+    bearer_token_env: "UOS_HELPDESK_MCP_TOKEN"
 
 # Keycloak OIDC — required once any bot sets requires_auth (validation check 5).
 # These are deployment config (issuer/JWKS URL/audience), not secrets.

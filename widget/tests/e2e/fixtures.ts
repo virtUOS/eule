@@ -96,6 +96,21 @@ export async function stubBackend(page: Page): Promise<void> {
         { type: "text", seq: 3, message_id: "m2", delta: "Second answer." },
         done("complete", 4),
       ];
+    } else if (msg.includes("contact")) {
+      // an `actions` event: one safe tel + one safe url + one UNSAFE url (must be dropped)
+      events = [
+        session,
+        { type: "text", seq: 1, message_id: "m1", delta: "Reach us here." },
+        {
+          type: "actions", seq: 2, message_id: "m1",
+          actions: [
+            { kind: "tel", label: "IT-Service-Desk", value: "+49 541 969 0000" },
+            { kind: "url", label: "Serviceportal", value: "https://good.example/portal" },
+            { kind: "url", label: "Evil", value: "javascript:alert(1)" },
+          ],
+        },
+        done("complete", 3),
+      ];
     } else if (msg.includes("menu")) {
       events = [
         session,

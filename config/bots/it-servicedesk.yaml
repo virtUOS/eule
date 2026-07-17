@@ -1,0 +1,42 @@
+version: 1
+id: "it-servicedesk"
+name: "IT-Service-Desk"
+description: "IT service desk: find service info, call support, or send feedback / report an issue."
+enabled: true
+
+# Menu-first service desk (BUILD_PLAN step 13): a bespoke fragment offering three lanes
+# — find info (retrieve-then-generate over uos-docs), call support (config phone/portal
+# rendered as tap-to-call links), and a feedback wizard (submit_feedback via uos-helpdesk).
+graph: "it-servicedesk"
+graph_params:
+  phone: "+49 541 969 0000"           # PLACEHOLDER — the real service-desk number
+  phone_label: "IT-Service-Desk"
+  portal_url: "https://www.uni-osnabrueck.de/serviceportal"   # PLACEHOLDER
+  portal_label: "Serviceportal"
+  # email: "support@uni-osnabrueck.de"  # optional — adds a mailto action
+
+model:
+  provider: "fast-small"              # docs-QA answers; a small model is plenty
+  temperature: 0.1
+  max_tokens: 1024
+
+# No prompt.system here — the fragment supplies the localized (de/en) system prompt for
+# the find-info lane; the other lanes are canned/config text.
+
+requires_auth: false                  # public: info + a phone number; feedback is anonymous
+
+tools:
+  mcp_servers: ["uos-docs", "uos-helpdesk"]
+  allow: ["uos_search", "uos_fetch", "submit_feedback"]
+  deny: []
+
+# Menu-first: the menu itself is the greeting, and typed questions shortcut to find-info.
+# Guard off — the structural menu constrains scope (the free-text lane is docs-QA only).
+guard: { enabled: false }
+greeting: { mode: "bot_greeting" }
+
+embedding:
+  mode: "launcher"
+  allowed_origins: ["https://www.uni-osnabrueck.de"]
+
+# No starter_replies: the bot's own menu (quick_replies) fills that role.

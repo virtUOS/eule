@@ -54,6 +54,14 @@ announcer AFTER the message body — e.g. "2 sources: CS101 Course Catalog; Enro
 deadlines 2025." Do not interleave source links into the streamed text. Links are
 keyboard-focusable and part of the tab order.
 
+### Actions announcement
+An `actions` event (contact/link buttons) renders a labelled group of real `<a>`
+links after the message body and is announced the same way, after the body — e.g.
+"Contact options: IT-Service-Desk, Serviceportal." `tel:`/`mailto:` actions show the
+number/address as visible text (desktop can't dial), so it is readable and copyable;
+every link is keyboard-focusable and in the tab order. Values the widget cannot
+sanitize (non-http(s) `url`, malformed `tel`/`mailto`, unknown `kind`) are dropped.
+
 ## 4. Interrupt announcement & focus (hard problem #2)
 
 - **Quick-replies appear:** render group; announce "Choose an option: …" (from

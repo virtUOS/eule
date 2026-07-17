@@ -25,6 +25,8 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started
 - ✅ **Step 12** — classifier routing for the front door (`routes.mode: classifier`,
   menu stays as fallback); specced + built 2026-07-16. `assistant.yaml` stays
   `mode: "menu"` until a live cheap model exists (runtime-gated like the guard).
+- ✅ **Step 13** — IT service-desk bot (`it-servicedesk`) + additive `actions` event
+  (tel/url/mailto contact buttons); built 2026-07-16.
 
 Verified across the done steps: gateway `pytest` + `mypy --strict` + `validate-config`;
 widget Vitest + Playwright(axe) + `tsc --strict`. Work is committed on `main`.
@@ -449,6 +451,30 @@ model (zero classifier calls) · sticky/escape/T11.6 unchanged · check-12/provi
 validation · conformance auto-covers. `assistant.yaml` stays `mode: "menu"` until a
 live cheap model exists (runtime infra-gated like the guard; fully buildable against
 fakes now).
+
+## Step 13 — IT service-desk bot + `actions` event  ✅ (built 2026-07-16)
+
+Evolves the it-helpdesk concept into a menu-first service desk (new bot
+`it-servicedesk`; the original it-helpdesk stays as the retrieve-then-generate
+reference). Bespoke fragment, three lanes looping back to the menu (ends turns
+`awaiting_input`, like the router):
+- **Find information** — retrieve-then-generate over `uos-docs` (uos_search/uos_fetch);
+  a typed question at the start shortcuts past the menu; the menu path asks for the
+  question first.
+- **Call support** — streams a line + emits the new `actions` event with the phone
+  (tel:) and portal (url) from `graph_params` (contact details are config, not MCP).
+- **Feedback / issue** — an interrupt wizard (kind → description → submit via
+  `uos-helpdesk`'s `submit_feedback`); contract-zero (no `form` event needed).
+
+Uses TWO MCP servers (docs + helpdesk). New additive protocol event **`actions`**
+(docs/01): `{kind: tel|url|mailto, label, value}` attached to a message like `sources`,
+rendered by the widget as device-aware links (mobile dials, desktop shows/copies the
+number), every value re-sanitized widget-side; a11y group announced after the body
+(docs/05). Metric `feedback_submitted_total{bot,kind}`.
+
+Gate (all met): fragment tests (menu → each lane, feedback submits via a fake MCP,
+actions emitted, missing-tool build failure); widget tests (actions render, unsafe
+url dropped, tel: sanitized, survive reload); conformance auto-covers the bot.
 
 ## Later / v2 (do not build now)
 - Dynamic mid-conversation re-routing (topic switch detection).

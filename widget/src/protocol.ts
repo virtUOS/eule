@@ -40,6 +40,19 @@ export interface SourcesEvent {
   sources: SourceItem[];
 }
 
+export interface ActionItem {
+  kind: "tel" | "url" | "mailto";
+  label: string;
+  value: string;
+}
+
+export interface ActionsEvent {
+  type: "actions";
+  seq: number;
+  message_id: string;
+  actions: ActionItem[];
+}
+
 export interface QuickReplyOption {
   id: string;
   label: string;
@@ -78,6 +91,7 @@ export type ServerEvent =
   | StatusEvent
   | TextEvent
   | SourcesEvent
+  | ActionsEvent
   | QuickRepliesEvent
   | ErrorEvent
   | DoneEvent;

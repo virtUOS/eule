@@ -3,7 +3,7 @@
 
 import * as icons from "./icons";
 import type { Strings } from "./i18n";
-import type { SourceItem } from "./protocol";
+import type { ActionItem, SourceItem } from "./protocol";
 
 // Citation URLs come from tool/retrieval output — UNTRUSTED (docs/04 §7). Only http(s)
 // may become a real link; a `javascript:`/`data:` URL would execute in the host page's
@@ -15,6 +15,24 @@ function safeHttpUrl(raw: string): string | null {
   } catch {
     return null;
   }
+}
+
+// `actions` values are re-sanitized here (defense in depth — the gateway also only
+// emits trusted config values). Each builder returns a safe href or null (→ dropped).
+function telHref(raw: string): string | null {
+  // tel: allows an optional leading + then digits/spaces/-/()/. ; strip to +digits.
+  if (!/^\+?[0-9 ()./-]{3,}$/.test(raw)) return null;
+  const compact = raw.replace(/[^0-9+]/g, "");
+  return compact.length >= 3 ? `tel:${compact}` : null;
+}
+function mailtoHref(raw: string): string | null {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw) ? `mailto:${raw}` : null;
+}
+function actionHref(item: ActionItem): string | null {
+  if (item.kind === "tel") return telHref(item.value);
+  if (item.kind === "mailto") return mailtoHref(item.value);
+  if (item.kind === "url") return safeHttpUrl(item.value);
+  return null; // unknown kind → dropped (forward-compatible)
 }
 
 function srOnly(text: string): HTMLSpanElement {
@@ -43,6 +61,9 @@ export interface BotMessage {
   appendText: (delta: string) => void;
   fullText: () => string;
   attachSources: (sources: SourceItem[], s: Strings) => void;
+  // Returns the labels of the actions actually rendered (invalid ones are dropped),
+  // so the caller can announce them after the body (docs/05).
+  attachActions: (actions: ActionItem[], s: Strings) => string[];
 }
 
 export function botMessage(s: Strings, botName: string): BotMessage {
@@ -108,6 +129,46 @@ export function botMessage(s: Strings, botName: string): BotMessage {
         group.appendChild(card);
       }
       inner.appendChild(group);
+    },
+    attachActions(actions: ActionItem[], strings: Strings): string[] {
+      const rendered: string[] = [];
+      const group = document.createElement("div");
+      group.className = "cb-actions";
+      group.setAttribute("role", "group");
+      group.setAttribute("aria-label", strings.actionsLabel);
+      for (const item of actions) {
+        const href = actionHref(item);
+        if (href === null) continue; // unsafe / unknown kind → dropped
+        const link = document.createElement("a");
+        link.className = "cb-action";
+        link.href = href;
+        if (item.kind === "url") {
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+        }
+        const iconEl = document.createElement("span");
+        iconEl.className = "cb-action-icon";
+        iconEl.innerHTML =
+          item.kind === "tel" ? icons.phone(16) : item.kind === "mailto" ? icons.mail(16) : icons.externalLink(16);
+        const textWrap = document.createElement("span");
+        textWrap.className = "cb-action-text";
+        const label = document.createElement("span");
+        label.className = "cb-action-label";
+        label.textContent = item.label;
+        textWrap.appendChild(label);
+        // Desktop can't dial — show the number/address itself so it's readable/copyable.
+        if (item.kind === "tel" || item.kind === "mailto") {
+          const value = document.createElement("span");
+          value.className = "cb-action-value";
+          value.textContent = item.value;
+          textWrap.appendChild(value);
+        }
+        link.append(iconEl, textWrap);
+        group.appendChild(link);
+        rendered.push(item.label);
+      }
+      if (rendered.length > 0) inner.appendChild(group);
+      return rendered;
     },
   };
 }

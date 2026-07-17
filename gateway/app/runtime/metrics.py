@@ -87,6 +87,9 @@ TURNS_WITH_CONTEXT = Counter(
     "turns_with_context_total", "Turns carrying a host-page context key", ["key"]
 )
 SOURCES_EMITTED = Counter("sources_emitted_total", "Sources events emitted", ["bot"])
+FEEDBACK_SUBMITTED = Counter(
+    "feedback_submitted_total", "Feedback/issue submissions", ["bot", "kind"]  # positive|negative|request
+)
 CLIENT_LOCALES = Counter("client_locales_total", "Turns by client locale", ["locale"])
 
 

@@ -121,6 +121,19 @@ export const CSS = /* css */ `
 .cb-cite-host { display: block; font-size: 12px; color: var(--text-muted); }
 .cb-cite-chevron { flex: none; color: var(--text-muted); display: inline-flex; }
 
+/* actions (contact/link buttons) — a bit heavier than a citation card: these are CTAs */
+.cb-actions { display: flex; flex-direction: column; gap: 7px; margin-top: 11px; }
+.cb-action {
+  display: flex; align-items: center; gap: 10px; text-decoration: none;
+  color: var(--on-primary); background: var(--primary);
+  border-radius: var(--radius-card); padding: 10px 13px; font-weight: 600;
+}
+.cb-action:hover { background: var(--primary-hover); }
+.cb-action-icon { flex: none; display: inline-flex; }
+.cb-action-text { flex: 1; min-width: 0; }
+.cb-action-label { display: block; font-size: 14px; }
+.cb-action-value { display: block; font-size: 12px; opacity: 0.85; }
+
 /* --- typing indicator --- */
 .cb-typing { display: flex; align-items: center; gap: 6px; margin-bottom: 20px; }
 .cb-dot {

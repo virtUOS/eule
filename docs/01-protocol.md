@@ -134,6 +134,27 @@ choice arrives as a fresh POST.
   `05-accessibility.md`), not interleaved into the streamed text.
 - `message_id` ties the sources to the bubble they belong to.
 
+### `actions` (contact / link buttons, at most once per assistant message)
+```jsonc
+{ "type":"actions","seq":9,"message_id":"m1",
+  "actions":[
+    { "kind":"tel",   "label":"IT-Service-Desk", "value":"+49 541 969 0000" },
+    { "kind":"url",   "label":"Serviceportal",    "value":"https://…" },
+    { "kind":"mailto","label":"E-Mail",           "value":"support@…" }
+  ] }
+```
+- Emitted at most once per assistant message, after its `text`, before `done`
+  (same lifecycle as `sources`); `message_id` ties them to that bubble.
+- `kind` ∈ `tel | url | mailto`. The widget renders each as a real link and makes
+  the value device-aware — a `tel:` dials on mobile and stays a visible, copyable
+  number on desktop. Unknown kinds are ignored (forward-compatible).
+- **Values are re-sanitized by the widget** (http(s) only for `url`, a phone charset
+  for `tel`, a basic address for `mailto`); anything else is dropped. Fragments must
+  still emit only trusted, config-derived values — `actions` is NOT for model/tool
+  output (unlike `sources`, which is untrusted attribution).
+- Accessibility: a labelled group of links after the message body (see
+  `05-accessibility.md`), announced after the body, not interleaved into the text.
+
 ### `error`
 ```jsonc
 { "type":"error","seq":9,"code":"tool_unavailable","message":"…user-facing…",
