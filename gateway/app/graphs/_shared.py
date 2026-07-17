@@ -54,6 +54,19 @@ def coerce_results(structured: Any, text: str | None) -> list[dict[str, Any]]:
     return [row for row in payload if isinstance(row, dict)]
 
 
+def page_text(structured: Any, text: str | None) -> str:
+    """A fetch result → its page body (markdown). Tolerates a structured dict (common
+    keys `markdown`/`content`/`text`), a bare structured string, or a plain text body."""
+    if isinstance(structured, dict):
+        for key in ("markdown", "content", "text"):
+            value = structured.get(key)
+            if isinstance(value, str):
+                return value
+    if isinstance(structured, str):
+        return structured
+    return text or ""
+
+
 def source_items(rows: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Rows → citation items [{title, source, url}], keeping only http(s) URLs."""
     out: list[dict[str, str]] = []

@@ -22,7 +22,7 @@ from langgraph.graph import END
 from ..mcp.client import McpClient, McpResult, allowed_tool_names, mcp_call
 from ..mcp.transport import client_for
 from ..registry.models import BotCfg
-from ._shared import coerce_results, last_user_text, safe_http_url, source_items
+from ._shared import coerce_results, last_user_text, page_text, safe_http_url, source_items
 from .emit import emit_sources, emit_status
 from .model import astream_message, build_chat_model
 from .skeleton import BotGraphBuilder, BotState, GraphFragment
@@ -58,16 +58,6 @@ def _parse_results(result: McpResult) -> list[dict[str, str]]:
             }
         )
     return out
-
-
-def _page_text(result: McpResult) -> str:
-    """uos_fetch → markdown. May arrive as a structured field or a plain text body."""
-    if isinstance(result.structured, dict):
-        for key in ("markdown", "content", "text"):
-            value = result.structured.get(key)
-            if isinstance(value, str):
-                return value
-    return result.text or ""
 
 
 def _client_from_cfg(cfg: BotCfg, registry: "Registry") -> McpClient:
@@ -117,7 +107,8 @@ def build_it_helpdesk_fragment(
                     continue
                 emit_status("tool_call", "Reading the most relevant pages…", FETCH_TOOL)
                 fetched = await mcp_call(ctx, client, FETCH_TOOL, {"url": url})
-                pages.append(f"[{i + 1}] {r['title']} ({url})\n{_page_text(fetched)[:MAX_PAGE_CHARS]}")
+                page = page_text(fetched.structured, fetched.text)
+                pages.append(f"[{i + 1}] {r['title']} ({url})\n{page[:MAX_PAGE_CHARS]}")
 
             # 3) answer from that content, streaming; then cite the search results.
             # Retrieved content is UNTRUSTED (golden rule 3) — framed as data, not

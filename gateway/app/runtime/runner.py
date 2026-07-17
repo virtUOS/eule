@@ -3,6 +3,7 @@ protocol event dicts; SSE framing + heartbeat are applied by the endpoint."""
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Iterator
 from uuid import uuid4
@@ -202,6 +203,12 @@ async def _run_graph(  # noqa: PLR0913 — threads the resolved turn state into 
             for ev in translate(mode, data, emitter, msg_ids):
                 yield ev
     except Exception:  # noqa: BLE001 — surface as protocol error, never leak a stack
+        # Log the full cause server-side (MCP unreachable, auth failure, tool not found,
+        # model error…) — the user only ever sees the generic line below, so without
+        # this the real fault is invisible in the logs.
+        logging.getLogger("eule.runner").exception(
+            "turn failed for bot=%s session=%s", cfg.id, session.session_id
+        )
         for ev in _fail(
             emitter, sessions, session, "internal_error",
             "Something went wrong. Please try again.",

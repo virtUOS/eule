@@ -32,7 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..mcp.client import McpClient, McpResult, McpToolSpec, allowed_tool_names, mcp_call
 from ..mcp.transport import client_for
 from ..runtime import metrics
-from ._shared import coerce_results, last_user_text, safe_http_url, source_items
+from ._shared import coerce_results, last_user_text, page_text, safe_http_url, source_items
 from .emit import ask_quick_replies, emit_actions, emit_sources, emit_status
 from .model import astream_message, build_chat_model
 from .skeleton import BotGraphBuilder, BotState, GraphFragment, _stream_canned
@@ -238,7 +238,7 @@ def build_it_servicedesk_fragment(
                     continue
                 emit_status("tool_call", "…", FETCH_TOOL)
                 fetched = await mcp_call(ctx, await _client_for(FETCH_TOOL), FETCH_TOOL, {"url": url})
-                body = fetched.structured if isinstance(fetched.structured, str) else (fetched.text or "")
+                body = page_text(fetched.structured, fetched.text)
                 pages.append(f"[{i + 1}] {r.get('title') or url} ({url})\n{body[:MAX_PAGE_CHARS]}")
 
             context = "\n\n".join(pages) if pages else t["no_pages"]
