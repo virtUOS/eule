@@ -48,6 +48,8 @@ mcp_servers:
 # the gateway is ever exposed directly (a forged XFF would bypass rate limits).
 network:
   trust_forwarded_for: true
+  # dev_allow_localhost: true   # DEV ONLY — accept any localhost/127.0.0.1 port for
+                                # embedding without listing it. Leave unset in prod.
 
 auth:
   issuer: "https://sso.uni-osnabrueck.de/realms/university"

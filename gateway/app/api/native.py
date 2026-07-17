@@ -122,7 +122,18 @@ def _error_response(
     return JSONResponse(status_code=status, content=body, headers=headers or {})
 
 
-def _cors_headers(origin: str | None, cfg: BotCfg, host: str | None) -> tuple[bool, dict[str, str]]:
+def _is_localhost_origin(origin: str) -> bool:
+    """True for an http(s) loopback origin on any port (dev only)."""
+    try:
+        u = urlparse(origin)
+    except ValueError:
+        return False
+    return u.scheme in ("http", "https") and u.hostname in ("localhost", "127.0.0.1", "::1")
+
+
+def _cors_headers(
+    origin: str | None, cfg: BotCfg, host: str | None, *, dev_allow_localhost: bool = False
+) -> tuple[bool, dict[str, str]]:
     """(allowed, headers). No Origin = non-browser → allowed, no headers. TRUE
     same-origin is also allowed without allowlisting: browsers send Origin on every
     POST including same-origin ones, so the deployment's own pages (standalone page,
@@ -138,6 +149,10 @@ def _cors_headers(origin: str | None, cfg: BotCfg, host: str | None) -> tuple[bo
     if host is not None and origin_host and origin_host.lower() == host.lower():
         return True, {}  # same-origin: no CORS headers needed
     if origin in cfg.embedding.allowed_origins:
+        return True, {"Access-Control-Allow-Origin": origin, "Vary": "Origin"}
+    # DEV ONLY (network.dev_allow_localhost): accept any loopback origin/port so a dev
+    # page needn't be added to every bot's allowlist. Off by default → prod stays strict.
+    if dev_allow_localhost and _is_localhost_origin(origin):
         return True, {"Access-Control-Allow-Origin": origin, "Vary": "Origin"}
     return False, {}
 
@@ -156,11 +171,15 @@ def _client_ip(request: Request, trust_forwarded_for: bool) -> str:
 
 @router.options("/api/v1/bots/{bot_id}/chat")
 async def chat_preflight(bot_id: str, request: Request) -> Response:
+    registry = request.app.state.registry
     try:
-        cfg = request.app.state.registry.get(bot_id)
+        cfg = registry.get(bot_id)
     except UnknownBot:
         return Response(status_code=404)
-    _allowed, cors = _cors_headers(request.headers.get("origin"), cfg, request.headers.get("host"))
+    _allowed, cors = _cors_headers(
+        request.headers.get("origin"), cfg, request.headers.get("host"),
+        dev_allow_localhost=registry.global_cfg.network.dev_allow_localhost,
+    )
     if cors:
         cors = {
             **cors,
@@ -195,7 +214,10 @@ async def chat(bot_id: str, body: ChatBody, request: Request) -> Any:
 
     # Origin gate (docs/06 T9.1). A disallowed cross-origin embed is refused outright.
     origin = request.headers.get("origin")
-    allowed, cors = _cors_headers(origin, cfg, request.headers.get("host"))
+    allowed, cors = _cors_headers(
+        origin, cfg, request.headers.get("host"),
+        dev_allow_localhost=registry.global_cfg.network.dev_allow_localhost,
+    )
     if not allowed:
         return reject(403, "forbidden_origin", "This origin may not embed this bot.")
 
@@ -335,7 +357,10 @@ async def bootstrap(bot_id: str, request: Request, lang: str = "de") -> Any:
         return _error_response(404, "unknown_bot", f"No bot with id '{bot_id}'.")
 
     origin = request.headers.get("origin")
-    allowed, cors = _cors_headers(origin, cfg, request.headers.get("host"))
+    allowed, cors = _cors_headers(
+        origin, cfg, request.headers.get("host"),
+        dev_allow_localhost=registry.global_cfg.network.dev_allow_localhost,
+    )
     if not allowed:
         return _error_response(403, "forbidden_origin", "This origin may not embed this bot.")
 

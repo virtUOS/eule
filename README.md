@@ -278,8 +278,10 @@ configuration is via the `data-*` attributes above (or the programmatic
 `?mode=…&botId=…&lang=…&theme=…&topic=…&page=…` for manual testing; the shipped
 `/standalone.html` is statically configured.
 
-Pages served from the deployment's own host don't need to allowlist themselves. Details:
-`docs/07-deployment.md`.
+Pages served from the deployment's own host don't need to allowlist themselves. For
+local development, set `network.dev_allow_localhost: true` in `config/global.yaml` to
+accept any `localhost` / `127.0.0.1` origin on any port without listing each — it is
+**off by default so production stays strict**. Details: `docs/07-deployment.md`.
 
 ---
 

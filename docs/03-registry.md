@@ -58,6 +58,10 @@ mcp_servers:
 # otherwise anonymous rate limits key on the direct peer address.
 network:
   trust_forwarded_for: true
+  # DEV ONLY: dev_allow_localhost (default false) lets any http(s) localhost/127.0.0.1/
+  # [::1] origin on ANY port embed every bot, bypassing embedding.allowed_origins. For
+  # local development against changing dev-server ports; never enable in production.
+  dev_allow_localhost: false
 
 auth:
   issuer: "https://sso.uni.edu/realms/university"

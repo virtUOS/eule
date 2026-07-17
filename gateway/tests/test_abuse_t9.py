@@ -183,3 +183,40 @@ async def test_t9_1b_cross_origin_still_gated(client):
         headers={"origin": "https://evil.example", "host": "test"},
     )
     assert resp.status_code == 403
+
+
+# --- T9.1c — dev_allow_localhost (review follow-up) --------------------------
+
+def _localhost_app(*, dev_allow: bool):
+    gcfg = make_global(**({"network": {"dev_allow_localhost": True}} if dev_allow else {}))
+    # allowlist a production origin only; localhost is NOT listed
+    bot = make_bot(id="echo", embedding={"mode": "launcher", "allowed_origins": [ALLOWED]})
+    registry = Registry(gcfg, {"echo": bot})
+    sessions = Sessions(clock=FakeClock())
+    app = create_app(registry, sessions=sessions, graphs=GraphCache(registry, sessions))
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+
+async def test_t9_1c_localhost_forbidden_by_default():
+    async with _localhost_app(dev_allow=False) as client:
+        resp = await client.post(CHAT, json={"message": "hi"}, headers={"origin": "http://localhost:5173"})
+        assert resp.status_code == 403 and resp.json()["code"] == "forbidden_origin"
+
+
+async def test_t9_1c_localhost_allowed_when_dev_flag_set():
+    async with _localhost_app(dev_allow=True) as client:
+        # any port + 127.0.0.1 + preflight all pass, and the specific origin is echoed
+        for origin in ("http://localhost:5173", "http://localhost:9999", "http://127.0.0.1:3000"):
+            async with client.stream("POST", CHAT, json={"message": "hi"}, headers={"origin": origin}) as r:
+                assert r.status_code == 200, origin
+                assert r.headers["access-control-allow-origin"] == origin
+                await r.aread()
+        pre = await client.options(CHAT, headers={"origin": "http://localhost:5173"})
+        assert pre.status_code == 204
+        assert pre.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+async def test_t9_1c_dev_flag_does_not_open_non_localhost():
+    async with _localhost_app(dev_allow=True) as client:
+        resp = await client.post(CHAT, json={"message": "hi"}, headers={"origin": "https://evil.example"})
+        assert resp.status_code == 403  # only loopback is relaxed, nothing else

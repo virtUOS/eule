@@ -111,6 +111,10 @@ class NetworkCfg(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     trust_forwarded_for: bool = False
+    # DEV ONLY: when true, any http(s)://localhost:* or 127.0.0.1:*/[::1]:* origin may
+    # embed every bot, bypassing embedding.allowed_origins (saves listing changing Vite
+    # ports). Default false — production stays strict. Never enable on a public deploy.
+    dev_allow_localhost: bool = False
 
 
 class GlobalCfg(BaseModel):
