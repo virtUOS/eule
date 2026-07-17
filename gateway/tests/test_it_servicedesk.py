@@ -185,12 +185,69 @@ async def test_feedback_cancel_returns_to_menu_without_submitting(sessions):
     assert [o["id"] for o in _qr(ev)[-1]["options"]] == ["info", "call", "feedback"]  # menu
 
 
-def test_missing_tool_in_allowlist_fails_at_build():
+def test_missing_docs_tool_fails_at_build_but_feedback_is_optional():
     import pytest
 
-    cfg = _bot(tools={"mcp_servers": ["uos-docs"], "allow": ["uos_search", "uos_fetch"], "deny": []})
-    with pytest.raises(ValueError, match="submit_feedback"):
+    # a docs tool missing → build fails (find-info can't work)
+    bad = _bot(tools={"mcp_servers": ["uos-website"], "allow": ["uos_search"], "deny": []})
+    with pytest.raises(ValueError, match="uos_fetch"):
         build_it_servicedesk_fragment(
-            cfg, Registry(make_global(), {}), mcp_clients=[_client()],
+            bad, Registry(make_global(), {}), mcp_clients=[_client()],
             answer_model=GenericFakeChatModel(messages=iter([AIMessage(content="x")])),
         )
+    # submit_feedback absent → builds fine (feedback runs as a stub)
+    ok = _bot(tools={"mcp_servers": ["uos-website"], "allow": ["uos_search", "uos_fetch"], "deny": []})
+    build_it_servicedesk_fragment(
+        ok, Registry(make_global(), {}), mcp_clients=[_client()],
+        answer_model=GenericFakeChatModel(messages=iter([AIMessage(content="x")])),
+    )
+
+
+async def test_feedback_is_stubbed_when_no_submit_tool_allowlisted(sessions):
+    """No submit_feedback in the allowlist → the wizard still completes and thanks the
+    user (stub, logged), without calling the MCP tool. For demos before the backend."""
+    from .test_metrics_step11 import sample
+
+    SUBMITTED.clear()
+    before = sample("feedback_submitted_total", {"bot": "it-servicedesk", "kind": "positive"})
+    cfg = _bot(tools={"mcp_servers": ["uos-website"], "allow": ["uos_search", "uos_fetch"], "deny": []})
+    app = _app(cfg, sessions)
+    ev, _ = await _drive(app, {"greeting": True})
+    sid = ev[0]["data"]["session_id"]
+    [menu] = _qr(ev)
+    ev, _ = await _drive(app, {"session_id": sid, "choice": {"id": "feedback"}, "reply_to": menu["reply_to"]})
+    [kind] = _qr(ev)
+    ev, _ = await _drive(app, {"session_id": sid, "choice": {"id": "positive"}, "reply_to": kind["reply_to"]})
+    [desc] = _qr(ev)
+    ev, _ = await _drive(
+        app, {"session_id": sid, "choice": {"id": None, "text": "great service"}, "reply_to": desc["reply_to"]}
+    )
+    assert SUBMITTED == []  # no MCP call — stubbed
+    assert "Danke" in _text(ev) or "Thanks" in _text(ev)  # still thanks the user
+    assert sample("feedback_submitted_total", {"bot": "it-servicedesk", "kind": "positive"}) == before + 1
+
+
+async def test_find_info_uses_configured_system_prompt(sessions):
+    """The Q&A lane is retrieve-then-generate driven by prompt.system (like it-helpdesk),
+    falling back to the built-in prompt when unset."""
+    import itertools
+
+    captured: list[str] = []
+
+    class _Capturing(GenericFakeChatModel):
+        async def _astream(self, messages, stop=None, run_manager=None, **kwargs):  # type: ignore[override]
+            captured.append(str(messages[0].content))  # the system message
+            async for c in super()._astream(messages, stop=stop, run_manager=run_manager, **kwargs):
+                yield c
+
+    cfg = _bot(prompt={"system": "CUSTOM SERVICE-DESK PROMPT"})
+    model = _Capturing(messages=itertools.cycle([AIMessage(content="ok")]))
+    fragment = build_it_servicedesk_fragment(
+        cfg, Registry(make_global(), {}), mcp_clients=[_client()], answer_model=model,
+    )
+    graph = build_bot_graph(cfg, [], fragment, sessions.checkpointer)
+    reg = Registry(make_global(), {cfg.id: cfg})
+    app = create_app(reg, sessions=sessions, graphs=_StubGraphs(graph))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        await collect(client, "it-servicedesk", {"message": "how do I set up the VPN?"})
+    assert captured and captured[0] == "CUSTOM SERVICE-DESK PROMPT"

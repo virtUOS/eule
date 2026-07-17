@@ -3,18 +3,24 @@ three lanes, looping back to the menu after each (so it ends turns `awaiting_inp
 like the router):
 
   ① Find information  — retrieve-then-generate over the docs MCP server (uos_search /
-     uos_fetch), the fast-answer path. Typing a question at the start skips the menu.
+     uos_fetch), the fast-answer path, driven by `prompt.system` (like it-helpdesk;
+     falls back to a built-in localized prompt). Typing a question at the start skips
+     the menu.
   ② Call support      — streams a short line and emits an `actions` event with the
      phone (tel:) + portal (url) from config; the widget renders device-aware links.
   ③ Feedback / issue  — an interrupt wizard: pick a kind (positive/negative/request),
-     type a description, submit via the helpdesk MCP server (`submit_feedback`).
+     type a description. Submitted via the helpdesk MCP server (`submit_feedback`) when
+     that tool is allowlisted; otherwise the wizard runs as a STUB (captured to the log,
+     shown as success) so feedback can be demoed before the backend exists.
 
-Uses TWO MCP servers (docs search + helpdesk). Contact details are config, not MCP
-(static trusted data) — `actions` values are trusted here (unlike `sources`).
+Requires the two docs tools; the helpdesk (feedback) tool is optional. Contact details
+are config, not MCP (static trusted data) — `actions` values are trusted here (unlike
+`sources`).
 """
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Hashable
 
 from langchain_core.language_models import BaseChatModel
@@ -38,7 +44,11 @@ if TYPE_CHECKING:
 SEARCH_TOOL = "uos_search"
 FETCH_TOOL = "uos_fetch"
 FEEDBACK_TOOL = "submit_feedback"
-_NEEDED = {SEARCH_TOOL, FETCH_TOOL, FEEDBACK_TOOL}
+# Find-info needs the two docs tools; the feedback tool is OPTIONAL — if it isn't in
+# the allowlist the feedback wizard still runs and captures input, but submission is a
+# stub (logged, not sent) until a backend exists. Add submit_feedback to tools.allow
+# (with a server that exposes it) to switch the wizard from stub to real submission.
+_NEEDED = {SEARCH_TOOL, FETCH_TOOL}
 
 MAX_PAGES = 3
 MAX_PAGE_CHARS = 4000
@@ -232,7 +242,10 @@ def build_it_servicedesk_fragment(
                 pages.append(f"[{i + 1}] {r.get('title') or url} ({url})\n{body[:MAX_PAGE_CHARS]}")
 
             context = "\n\n".join(pages) if pages else t["no_pages"]
-            prompt = [SystemMessage(t["system"]), *state["messages"], SystemMessage(t["reference"] + context)]
+            # The find-info lane is retrieve-then-generate (like it-helpdesk): a
+            # configured prompt.system drives it, falling back to the localized default.
+            system = cfg.prompt.system or t["system"]
+            prompt = [SystemMessage(system), *state["messages"], SystemMessage(t["reference"] + context)]
             full = await astream_message(model, prompt)
             sources = source_items(results)
             if sources and full.id:
@@ -302,15 +315,27 @@ def build_it_servicedesk_fragment(
             t = _T[_lang(ctx.locale)]
             scratch = dict(state.get("scratch", {}))
             kind = str(scratch.get("fb_kind", "request"))
-            emit_status("tool_call", "…", FEEDBACK_TOOL)
-            try:
-                result: McpResult = await mcp_call(
-                    ctx, await _client_for(FEEDBACK_TOOL), FEEDBACK_TOOL,
-                    {"kind": kind, "message": str(scratch.get("fb_text", ""))},
+            message = str(scratch.get("fb_text", ""))
+            if FEEDBACK_TOOL in allowed:
+                emit_status("tool_call", "…", FEEDBACK_TOOL)
+                try:
+                    result: McpResult = await mcp_call(
+                        ctx, await _client_for(FEEDBACK_TOOL), FEEDBACK_TOOL,
+                        {"kind": kind, "message": message},
+                    )
+                    ok = not result.is_error
+                except Exception:  # noqa: BLE001 — surface as a friendly line, never a stack
+                    ok = False
+            else:
+                # Stub: no feedback backend configured yet. The wizard still works for
+                # the user; the submission is captured to the log (a per-turn record is
+                # also emitted by metrics/observability) instead of sent. Treated as a
+                # success so the demo shows the thank-you, not an error.
+                logging.getLogger("eule.feedback").info(
+                    "feedback (stub, no submit_feedback tool): bot=%s kind=%s len=%d",
+                    cfg.id, kind, len(message),
                 )
-                ok = not result.is_error
-            except Exception:  # noqa: BLE001 — surface as a friendly line, never a stack
-                ok = False
+                ok = True
             if ok:
                 metrics.FEEDBACK_SUBMITTED.labels(cfg.id, kind).inc()
             msg = await _stream_canned(t["fb_thanks"] if ok else t["fb_error"], state["messages"])
