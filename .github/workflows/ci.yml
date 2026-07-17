@@ -17,6 +17,7 @@ jobs:
       VLLM_SMALL_API_KEY: ci-dummy
       ASKUOS_API_KEY: ci-dummy
       UOS_DOCS_MCP_TOKEN: ci-dummy
+      UOS_HELPDESK_MCP_TOKEN: ci-dummy
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v8.3.2
