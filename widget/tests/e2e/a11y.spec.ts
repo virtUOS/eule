@@ -6,6 +6,11 @@ import { stubBackend, waitReady } from "./fixtures";
 // T10-A — automated axe-core, zero violations in each state (docs/05 §11).
 
 test.beforeEach(async ({ page }) => {
+  // Audit the SETTLED state: reduced-motion disables the panel's cb-pop entrance
+  // (via the @media rule in styles.ts), so axe never measures a mid-fade frame where
+  // the panel's transient opacity drags foreground colors below the contrast floor.
+  // (A supported user setting anyway — the settled render is what we must pass.)
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await stubBackend(page);
 });
 
