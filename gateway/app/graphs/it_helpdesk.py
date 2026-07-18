@@ -12,6 +12,7 @@ result-parsing below match the Osnabrück docs server (`uos_search`, `uos_fetch`
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.language_models import BaseChatModel
@@ -22,7 +23,14 @@ from langgraph.graph import END
 from ..mcp.client import McpClient, McpResult, allowed_tool_names, mcp_call
 from ..mcp.transport import client_for
 from ..registry.models import BotCfg
-from ._shared import coerce_results, last_user_text, page_text, safe_http_url, source_items
+from ._shared import (
+    coerce_results,
+    describe_result,
+    last_user_text,
+    page_text,
+    safe_http_url,
+    source_items,
+)
 from .emit import emit_sources, emit_status
 from .model import astream_message, build_chat_model
 from .skeleton import BotGraphBuilder, BotState, GraphFragment
@@ -97,7 +105,13 @@ def build_it_helpdesk_fragment(
 
             # 1) search the site
             emit_status("tool_call", "Searching the university website…", SEARCH_TOOL)
-            results = _parse_results(await mcp_call(ctx, client, SEARCH_TOOL, {"query": query}))
+            raw = await mcp_call(ctx, client, SEARCH_TOOL, {"query": query})
+            results = _parse_results(raw)
+            if not results:
+                logging.getLogger("eule.retrieval").warning(
+                    "%s: %s returned no usable rows (is_error=%s) — %s",
+                    cfg.id, SEARCH_TOOL, raw.is_error, describe_result(raw.structured, raw.text),
+                )
 
             # 2) fetch the top http(s) pages for answer context (bounded)
             pages: list[str] = []

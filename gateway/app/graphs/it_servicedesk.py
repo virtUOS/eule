@@ -32,7 +32,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..mcp.client import McpClient, McpResult, McpToolSpec, allowed_tool_names, mcp_call
 from ..mcp.transport import client_for
 from ..runtime import metrics
-from ._shared import coerce_results, last_user_text, page_text, safe_http_url, source_items
+from ._shared import (
+    coerce_results,
+    describe_result,
+    last_user_text,
+    page_text,
+    safe_http_url,
+    source_items,
+)
 from .emit import ask_quick_replies, emit_actions, emit_sources, emit_status
 from .model import astream_message, build_chat_model
 from .skeleton import BotGraphBuilder, BotState, GraphFragment, _stream_canned
@@ -230,6 +237,13 @@ def build_it_servicedesk_fragment(
             emit_status("tool_call", "…", SEARCH_TOOL)
             search = await mcp_call(ctx, await _client_for(SEARCH_TOOL), SEARCH_TOOL, {"query": query})
             results = coerce_results(search.structured, search.text)
+            if not results:
+                # Empty answer starts here: either the tool erred or its result shape
+                # isn't one coerce_results recognizes. Log the raw shape to adapt it.
+                logging.getLogger("eule.retrieval").warning(
+                    "%s: %s returned no rows (is_error=%s) — %s",
+                    cfg.id, SEARCH_TOOL, search.is_error, describe_result(search.structured, search.text),
+                )
 
             pages: list[str] = []
             for i, r in enumerate(results[:MAX_PAGES]):
