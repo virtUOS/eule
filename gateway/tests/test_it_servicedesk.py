@@ -81,12 +81,12 @@ def _bot(**overrides):
     return make_bot(**data)
 
 
-def _app(cfg, sessions, answer="Here is the answer."):
+def _app(cfg, sessions, answer="Here is the answer.", client=None):
     import itertools
 
     model = GenericFakeChatModel(messages=itertools.cycle([AIMessage(content=answer)]))
     fragment = build_it_servicedesk_fragment(
-        cfg, Registry(make_global(), {}), mcp_clients=[_client()], answer_model=model,
+        cfg, Registry(make_global(), {}), mcp_clients=[client or _client()], answer_model=model,
     )
     graph = build_bot_graph(cfg, [], fragment, sessions.checkpointer)
     reg = Registry(make_global(), {cfg.id: cfg})
@@ -120,6 +120,41 @@ async def test_typed_question_shortcuts_to_find_info(sessions):
     sources = [e["data"] for e in events if e["data"]["type"] == "sources"]
     assert sources and sources[0]["sources"][0]["title"] == "VPN"
     assert _qr(events)[-1]["options"][0]["id"] == "info"  # back to the menu
+
+
+def _client_search_term() -> StreamableHttpMcpClient:
+    """A server that names its search arg `search_term` (like the real uos_search) and
+    wraps its rows under singular `result` (FastMCP's bare-list shape) — the exact combo
+    that made search fail with a missing-argument error and parse to zero rows."""
+    server = FastMCP("desk-st")
+
+    @server.tool()
+    async def uos_search(search_term: str) -> list[dict]:
+        """Search the university website."""
+        return [{"title": "VPN", "url": "https://www.uni.example/vpn", "snippet": search_term}]
+
+    @server.tool()
+    async def uos_fetch(url: str) -> str:
+        """Fetch page markdown."""
+        return f"# Page\n{url}"
+
+    @asynccontextmanager
+    async def factory() -> AsyncIterator[ClientSession]:
+        async with connect(server) as session:
+            await session.initialize()
+            yield session
+
+    return StreamableHttpMcpClient(url="mem://desk-st", session_factory=factory)
+
+
+async def test_find_info_maps_arg_name_from_tool_schema(sessions):
+    # Regression: the arg is `search_term`, not `query`. The fragment must read the name
+    # from the tool's input schema, or the call errors and the answer is empty.
+    app = _app(_bot(), sessions, client=_client_search_term())
+    events, _ = await _drive(app, {"message": "how do I set up the VPN?"})
+    assert _text(events) == "Here is the answer."
+    sources = [e["data"] for e in events if e["data"]["type"] == "sources"]
+    assert sources and sources[0]["sources"][0]["url"] == "https://www.uni.example/vpn"
 
 
 async def test_menu_info_asks_then_answers(sessions):

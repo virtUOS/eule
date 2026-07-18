@@ -4,7 +4,31 @@ the wire even if the widget also refuses it."""
 
 from __future__ import annotations
 
-from app.graphs._shared import coerce_results, host, page_text, safe_http_url, source_items
+from app.graphs._shared import (
+    build_tool_args,
+    coerce_results,
+    host,
+    page_text,
+    safe_http_url,
+    source_items,
+)
+
+
+def test_build_tool_args_uses_declared_param_name():
+    # the real uos_search shape: one required param named search_term
+    schema = {"type": "object", "properties": {"search_term": {"type": "string"}}, "required": ["search_term"]}
+    assert build_tool_args(schema, "vpn", fallback="query") == {"search_term": "vpn"}
+    # sole required arg picked even when optional params exist
+    schema2 = {
+        "properties": {"search_term": {"type": "string"}, "limit": {"type": "integer"}},
+        "required": ["search_term"],
+    }
+    assert build_tool_args(schema2, "vpn", fallback="query") == {"search_term": "vpn"}
+    # sole property, none marked required → use it
+    assert build_tool_args({"properties": {"url": {"type": "string"}}}, "u", fallback="x") == {"url": "u"}
+    # ambiguous (no/2+ required, 2+ props) or missing schema → fallback
+    assert build_tool_args({"properties": {"a": {}, "b": {}}}, "v", fallback="query") == {"query": "v"}
+    assert build_tool_args(None, "v", fallback="query") == {"query": "v"}
 
 
 def test_safe_http_url_allows_only_http_s():

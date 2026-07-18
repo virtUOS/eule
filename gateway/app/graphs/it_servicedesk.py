@@ -33,6 +33,7 @@ from ..mcp.client import McpClient, McpResult, McpToolSpec, allowed_tool_names, 
 from ..mcp.transport import client_for
 from ..runtime import metrics
 from ._shared import (
+    build_tool_args,
     coerce_results,
     describe_result,
     last_user_text,
@@ -166,23 +167,35 @@ def build_it_servicedesk_fragment(
     clients = list(mcp_clients)
     model = answer_model or build_chat_model(registry.resolve_provider(cfg))
 
-    # Lazy tool→client discovery (list_tools is async; graph build is sync). Only
-    # allowlisted tools enter the map — structural scope holds (T4.1).
+    # Lazy tool→client / tool→spec discovery (list_tools is async; graph build is sync).
+    # Only allowlisted tools enter the maps — structural scope holds (T4.1). The spec's
+    # input_schema drives arg naming (servers name params differently, e.g. search_term).
     tool_client: dict[str, McpClient] | None = None
+    tool_spec: dict[str, McpToolSpec] = {}
+
+    async def _discover() -> None:
+        nonlocal tool_client
+        if tool_client is not None:
+            return
+        found: dict[str, McpClient] = {}
+        for client in clients:
+            for spec in await client.list_tools():  # type: McpToolSpec
+                if spec.name in allowed and spec.name not in found:
+                    found[spec.name] = client
+                    tool_spec[spec.name] = spec
+        tool_client = found
 
     async def _client_for(tool: str) -> McpClient:
-        nonlocal tool_client
-        if tool_client is None:
-            found: dict[str, McpClient] = {}
-            for client in clients:
-                for spec in await client.list_tools():  # type: McpToolSpec
-                    if spec.name in allowed and spec.name not in found:
-                        found[spec.name] = client
-            tool_client = found
-        resolved = tool_client.get(tool)
+        await _discover()
+        resolved = (tool_client or {}).get(tool)
         if resolved is None:
             raise ValueError(f"bot '{cfg.id}': tool '{tool}' not found on any configured mcp_server")
         return resolved
+
+    async def _args_for(tool: str, value: Any, *, fallback: str) -> dict[str, Any]:
+        await _discover()
+        spec = tool_spec.get(tool)
+        return build_tool_args(spec.input_schema if spec else None, value, fallback=fallback)
 
     def flow(b: BotGraphBuilder) -> None:
         async def enter(state: BotState, config: RunnableConfig) -> dict[str, Any]:
@@ -235,7 +248,8 @@ def build_it_servicedesk_fragment(
             t = _T[_lang(ctx.locale)]
             query = last_user_text(state)
             emit_status("tool_call", "…", SEARCH_TOOL)
-            search = await mcp_call(ctx, await _client_for(SEARCH_TOOL), SEARCH_TOOL, {"query": query})
+            search_args = await _args_for(SEARCH_TOOL, query, fallback="query")
+            search = await mcp_call(ctx, await _client_for(SEARCH_TOOL), SEARCH_TOOL, search_args)
             results = coerce_results(search.structured, search.text)
 
             pages: list[str] = []
@@ -244,7 +258,8 @@ def build_it_servicedesk_fragment(
                 if url is None:
                     continue
                 emit_status("tool_call", "…", FETCH_TOOL)
-                fetched = await mcp_call(ctx, await _client_for(FETCH_TOOL), FETCH_TOOL, {"url": url})
+                fetch_args = await _args_for(FETCH_TOOL, url, fallback="url")
+                fetched = await mcp_call(ctx, await _client_for(FETCH_TOOL), FETCH_TOOL, fetch_args)
                 body = page_text(fetched.structured, fetched.text)
                 pages.append(f"[{i + 1}] {r.get('title') or url} ({url})\n{body[:MAX_PAGE_CHARS]}")
 

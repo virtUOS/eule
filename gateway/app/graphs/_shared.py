@@ -87,6 +87,24 @@ def describe_result(structured: Any, text: str | None) -> str:
     return f"structured={shape} text[:200]={(text or '')[:200]!r}"
 
 
+def build_tool_args(input_schema: dict[str, Any] | None, value: Any, *, fallback: str) -> dict[str, Any]:
+    """Map a single-value tool call to the parameter name the server actually declares,
+    read from the tool's JSON input schema. Servers name these differently (Osnabrück's
+    `uos_search` wants `search_term`, not `query`), so hardcoding the key makes every
+    call fail with a missing-argument error. Picks the sole required property, else the
+    sole property, else `fallback`."""
+    schema = input_schema or {}
+    props = schema.get("properties") or {}
+    required = [name for name in (schema.get("required") or []) if name in props]
+    if len(required) == 1:
+        key = required[0]
+    elif len(props) == 1:
+        key = next(iter(props))
+    else:
+        key = fallback
+    return {key: value}
+
+
 def page_text(structured: Any, text: str | None) -> str:
     """A fetch result → its page body (markdown). Tolerates a structured dict (common
     keys `markdown`/`content`/`text`), a bare structured string, or a plain text body."""

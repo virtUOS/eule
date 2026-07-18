@@ -24,6 +24,7 @@ from ..mcp.client import McpClient, McpResult, allowed_tool_names, mcp_call
 from ..mcp.transport import client_for
 from ..registry.models import BotCfg
 from ._shared import (
+    build_tool_args,
     coerce_results,
     describe_result,
     last_user_text,
@@ -98,6 +99,16 @@ def build_it_helpdesk_fragment(
     if missing:
         raise ValueError(f"bot '{cfg.id}' (it-helpdesk) requires tools {sorted(missing)} in tools.allow")
 
+    # Lazy tool-schema cache: the input_schema drives arg naming, since servers name
+    # params differently (e.g. uos_search wants `search_term`, not `query`).
+    specs: dict[str, Any] = {}
+
+    async def _args_for(tool: str, value: Any, *, fallback: str) -> dict[str, Any]:
+        if not specs:
+            specs.update({s.name: s for s in await client.list_tools()})
+        spec = specs.get(tool)
+        return build_tool_args(spec.input_schema if spec else None, value, fallback=fallback)
+
     def flow(b: BotGraphBuilder) -> None:
         async def respond(state: BotState, config: RunnableConfig) -> dict[str, Any]:
             ctx = config["configurable"]["ctx"]
@@ -105,7 +116,7 @@ def build_it_helpdesk_fragment(
 
             # 1) search the site
             emit_status("tool_call", "Searching the university website…", SEARCH_TOOL)
-            raw = await mcp_call(ctx, client, SEARCH_TOOL, {"query": query})
+            raw = await mcp_call(ctx, client, SEARCH_TOOL, await _args_for(SEARCH_TOOL, query, fallback="query"))
             results = _parse_results(raw)
             if not results:
                 logging.getLogger("eule.retrieval").warning(
@@ -120,7 +131,7 @@ def build_it_helpdesk_fragment(
                 if url is None:
                     continue
                 emit_status("tool_call", "Reading the most relevant pages…", FETCH_TOOL)
-                fetched = await mcp_call(ctx, client, FETCH_TOOL, {"url": url})
+                fetched = await mcp_call(ctx, client, FETCH_TOOL, await _args_for(FETCH_TOOL, url, fallback="url"))
                 page = page_text(fetched.structured, fetched.text)
                 pages.append(f"[{i + 1}] {r['title']} ({url})\n{page[:MAX_PAGE_CHARS]}")
 
