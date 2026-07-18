@@ -283,7 +283,14 @@ export class EuleWidget {
     this.enableComposer();
     this.announcer.clearStatus();
     this.dom.statusLine.hidden = true;
-    this.renderStarters();
+    // A bot_greeting bot's opening turn (e.g. the service-desk menu) IS the greeting —
+    // re-fire it, exactly as the init/open paths do; otherwise fall back to starters.
+    // Without this a new chat left the panel empty until a full reload.
+    if (this.open && this.config.greeting.mode === "bot_greeting") {
+      this.startGreeting();
+    } else {
+      this.renderStarters();
+    }
     this.dom.input.focus();
   }
 

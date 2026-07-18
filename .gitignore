@@ -31,3 +31,4 @@ playwright-report/
 
 # Claude Code local scratch (jobs, worktrees, scheduled-task locks)
 .claude/
+.notes
