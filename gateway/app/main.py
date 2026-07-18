@@ -8,7 +8,9 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -25,6 +27,23 @@ from .runtime.ratelimit import RateLimiter
 from .runtime.sessions import Sessions
 
 SWEEP_INTERVAL_S = 60.0
+
+
+def configure_logging() -> None:
+    """Send the app's `eule.*` logs (per-turn records, retrieval diagnostics, turn-failed
+    tracebacks) to stdout at `LOG_LEVEL` (default INFO). uvicorn configures only its own
+    loggers and leaves root without a handler, so without this our records fall through
+    to Python's last-resort handler — which drops everything below WARNING and is easy to
+    lose. Own the `eule` logger explicitly and don't propagate (no duplicate lines)."""
+    level = os.environ.get("LOG_LEVEL", "INFO").upper()
+    logger = logging.getLogger("eule")
+    logger.setLevel(level)
+    if not any(getattr(h, "_eule_handler", False) for h in logger.handlers):
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        handler._eule_handler = True  # type: ignore[attr-defined]  # idempotency marker
+        logger.addHandler(handler)
+    logger.propagate = False
 
 
 async def _sweep_loop(sessions: Sessions, ratelimiter: RateLimiter, interval_s: float) -> None:
@@ -78,6 +97,7 @@ def create_app(
 
 
 def build_default_app() -> FastAPI:
+    configure_logging()
     config_dir = os.environ.get("CONFIG_DIR", str(Path(__file__).resolve().parents[2] / "config"))
     result = load_and_validate(config_dir)
     for w in result.warnings:

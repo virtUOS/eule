@@ -237,13 +237,6 @@ def build_it_servicedesk_fragment(
             emit_status("tool_call", "…", SEARCH_TOOL)
             search = await mcp_call(ctx, await _client_for(SEARCH_TOOL), SEARCH_TOOL, {"query": query})
             results = coerce_results(search.structured, search.text)
-            if not results:
-                # Empty answer starts here: either the tool erred or its result shape
-                # isn't one coerce_results recognizes. Log the raw shape to adapt it.
-                logging.getLogger("eule.retrieval").warning(
-                    "%s: %s returned no rows (is_error=%s) — %s",
-                    cfg.id, SEARCH_TOOL, search.is_error, describe_result(search.structured, search.text),
-                )
 
             pages: list[str] = []
             for i, r in enumerate(results[:MAX_PAGES]):
@@ -255,6 +248,15 @@ def build_it_servicedesk_fragment(
                 body = page_text(fetched.structured, fetched.text)
                 pages.append(f"[{i + 1}] {r.get('title') or url} ({url})\n{body[:MAX_PAGE_CHARS]}")
 
+            if not pages:
+                # No answer context — the empty answer starts here. Log why: the tool
+                # erred, the result shape isn't one coerce_results recognizes, or rows
+                # had no http(s) url to fetch. Raw shape included to adapt the parser.
+                logging.getLogger("eule.retrieval").warning(
+                    "%s: %s produced no page context (is_error=%s, rows=%d) — %s",
+                    cfg.id, SEARCH_TOOL, search.is_error, len(results),
+                    describe_result(search.structured, search.text),
+                )
             context = "\n\n".join(pages) if pages else t["no_pages"]
             # The find-info lane is retrieve-then-generate (like it-helpdesk): a
             # configured prompt.system drives it, falling back to the localized default.
