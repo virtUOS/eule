@@ -18,7 +18,7 @@
     "@vitest/coverage-v8": "^4.1.10",
     "axe-core": "^4.10.0",
     "jsdom": "^29.1.1",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vite": "^8.1.5",
     "vitest": "^4.1.9"
   }
